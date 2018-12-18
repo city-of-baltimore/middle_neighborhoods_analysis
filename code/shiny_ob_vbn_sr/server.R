@@ -23,6 +23,10 @@ server <- function(input, output, session) {
   sr.geo <- sr %>% filter(!is.na(longitude),
                           !is.na(latitude))
   
+  output$sr.total <- renderPrint(reactive({nrow(sr.geo)})())
+  output$sr.first <- renderPrint(reactive({min(sr.geo$createddate)})())
+  output$sr.last <- renderPrint(reactive({max(sr.geo$createddate)})())
+  
   sr.geo <- SpatialPointsDataFrame(
     coords = sr.geo %>% 
       select(longitude, latitude) %>% 
@@ -32,6 +36,10 @@ server <- function(input, output, session) {
   
   vbn.geo <- vbn %>% filter(!is.na(longitude),
                             !is.na(latitude))
+
+  output$vbn.total <- renderPrint({reactive({nrow(vbn.geo)})()})
+  output$vbn.first <- renderPrint(reactive({min(vbn.geo$noticedate)})())
+  output$vbn.last <- renderPrint(reactive({max(vbn.geo$noticedate)})())
   
   vbn.geo <- SpatialPointsDataFrame(
     coords = vbn.geo %>% 
@@ -39,7 +47,7 @@ server <- function(input, output, session) {
       as.matrix(),
     data = vbn.geo,
     proj4string = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
-  
+
   output$vacant.map <- renderLeaflet({
     leaflet() %>%
       setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
@@ -48,10 +56,10 @@ server <- function(input, output, session) {
                        radius = 1, 
                        opacity = 0.5,
                        color = "red",
-                       label = mapply(function(x, y) {
-                         HTML(sprintf("Vacant Service Request Created: %s <p> %s",
-                                      htmlEscape(x), htmlEscape(y)))},
-                         sr.geo$createddate, sr.geo$address, SIMPLIFY = F)) %>% 
+                       label = mapply(function(x, y, z) {
+                         HTML(sprintf("Vacant Service Request Created: %s <p> %s <p> Status: %s",
+                                      htmlEscape(x), htmlEscape(y), htmlEscape(z)))},
+                         sr.geo$createddate, sr.geo$address, sr.geo$srstatus, SIMPLIFY = F)) %>% 
       addCircleMarkers(data = vbn.geo, ~longitude, ~latitude, 
                        radius = 1,
                        opacity = 0.5,

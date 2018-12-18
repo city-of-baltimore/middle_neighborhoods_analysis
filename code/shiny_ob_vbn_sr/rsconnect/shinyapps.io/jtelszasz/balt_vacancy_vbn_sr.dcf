@@ -5,8 +5,8 @@ account: jtelszasz
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 619234
-bundleId: 1769855
+bundleId: 1769872
 url: https://jtelszasz.shinyapps.io/balt_vacancy_vbn_sr/
-when: 1545107824.65166
+when: 1545108335.91004
 asMultiple: FALSE
 asStatic: FALSE
