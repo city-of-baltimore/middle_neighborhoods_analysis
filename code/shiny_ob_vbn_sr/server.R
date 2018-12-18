@@ -3,6 +3,7 @@ library(RSocrata)
 library(maptools)
 library(leaflet)
 library(htmltools)
+library(shiny)
 
 server <- function(input, output, session) {
   
@@ -39,7 +40,7 @@ server <- function(input, output, session) {
     data = vbn.geo,
     proj4string = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
   
-  output$mymap <- renderLeaflet({
+  output$vacant.map <- renderLeaflet({
     leaflet() %>%
       setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
       addProviderTiles(providers$Stamen.TonerLite) %>%
