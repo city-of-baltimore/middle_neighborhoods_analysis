@@ -2,5 +2,7 @@ library(leaflet)
 library(shiny)
 
 ui <- fluidPage(
-  leafletOutput("vacant.map")
+  leafletOutput("vacant.map",
+                width = "100%",
+                height = "100%")
 )
