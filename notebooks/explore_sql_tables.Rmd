@@ -1,0 +1,312 @@
+---
+title: "Exploring SQL Tables"
+#subtitle: "For DOJ Consent Decree Monitors"
+author: "Justin Elszasz"
+date: "December 20, 2018"
+output:
+  html_notebook:
+    toc: yes
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+---
+
+```{r}
+library(RODBC)
+library(tidyverse)
+library(lubridate)
+library(ggiteam)
+```
+
+```{r}
+
+  housing.db <-   paste0('MSSQL:server=', VARS$EGIS_SERVER, ';',
+                         'uid=', VARS$EGIS_SERVER_USER,';',
+                         'pwd=', VARS$EGIS_SERVER_PWD, ';',
+                         'database=housing;',
+                         'trusted_connection=No')
+
+conn.gis <- odbcDriverConnect(
+  paste0(
+    'driver={ODBC Driver 13 for SQL Server};',
+    'server=', VARS$EGIS_SERVER, 
+    ';uid=', VARS$EGIS_SERVER_USER,
+    ';pwd=',VARS$EGIS_SERVER_PWD, 
+    ';database=housing;trusted_connection=No')
+)
+
+conn.sql <- odbcDriverConnect(
+  paste0(
+    'driver={ODBC Driver 13 for SQL Server};',
+    'server=', VARS$SQL_SERVER,
+    ';database=MOSS_BI;trusted_connection=Yes')
+  )
+```
+
+```{r}
+edemo <- sqlFetch(conn.gis, "housing.tbl_edemo")
+
+foreclosure <- sqlFetch(conn.gis, "housing.tbl_ForeClosure") %>%
+  mutate(Date = as.Date(Date))
+
+notices <- sqlFetch(conn.gis, "housing.tbl_Notice") %>% 
+  mutate(DateNotice = as.Date(DateNotice))
+
+permits <- sqlFetch(conn.gis, "housing.tbl_Permit")
+vbn <- sqlFetch(conn.gis, "housing.tbl_VBN_All") %>% 
+  mutate(DateNotice = as.Date(DateNotice))
+wo <- sqlFetch(conn.gis, "dbo.tbl_CHIP_WorkOrder")
+rs.filed <- sqlFetch(conn.gis, "housing.q_RSLink_Filed")
+rs.settled <- sqlFetch(conn.gis, "housing.q_RSLink_Settled")
+rs.soldnotset <- sqlFetch(conn.gis, "housing.q_RSLink_SoldAtAuctionNotSettled")
+
+insp <- sqlFetch(conn.gis, "housing.tbl_InspectionChip_Open")
+
+#sr.vacant <- sqlFetch(conn.sql, "dbo.CSR") %>% filter(`SR Type` == "HCD-Vacant Building")
+#sr.vacant <- sqlQuery(conn.sql, 'SELECT * FROM dbo\\.CSR WHERE `SR Type` = `HCD-Vacant Building`;')
+
+#sr.vacant %>% write_rds("../data/raw/sr_vacant_2018-12-21.rds")
+```
+
+# Foreclosures 
+
+- housing.tbl_ForeClosure
+
+```{r}
+glimpse(foreclosure)
+```
+
+```{r}
+View(foreclosure)
+```
+
+
+```{r}
+foreclosure %>% summarise(oldest = min(Date), latest = max(Date))
+```
+
+```{r}
+foreclosure %>% tail(20)
+```
+
+
+# Permits
+
+```{r}
+glimpse(permits)
+```
+
+```{r}
+permits %>% count(csm_status) %>% arrange(desc(n)) %>% View
+```
+```{r}
+permits %>% 
+  mutate(csm_issued_date = as.Date(csm_issued_date),
+         csm_finaled_date = as.Date(csm_finaled_date)) %>%
+  summarise(oldest.issue = min(csm_issued_date),
+            recent.issue = max(csm_issued_date),
+            oldest.finaled = min(csm_finaled_date, na.rm = T),
+            recent.finaled = max(csm_finaled_date, na.rm = T)
+            )
+```
+
+
+# Notices 
+
+```{r}
+glimpse(notices)
+```
+
+```{r}
+notices %>% count(Status) %>% arrange(desc(n)) %>% View
+```
+
+
+```{r}
+notices %>% 
+  mutate(notice.month = floor_date(DateNotice, "month")) %>%
+  count(notice.month) %>%
+  ggplot(aes(notice.month, n)) +
+  geom_line() +
+  theme_iteam_presentations() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank())
+```
+
+
+
+# Vacant Building Notices
+
+```{r}
+glimpse(vbn)
+```
+
+
+```{r}
+vbn %>% 
+  group_by(VBN_Status) %>% 
+  summarise(count = n(),
+            oldest = min(DateNotice), 
+            latest = max(DateNotice),
+            avg_age = mean(today() - DateNotice))
+```
+
+# Work Orders
+
+```{r}
+glimpse(wo)
+```
+
+```{r}
+wo %>% 
+  count(Status) %>%
+  arrange(desc(n))
+```
+```{r}
+wo %>% 
+  count(CleanType)
+```
+
+
+```{r}
+wo %>% summarise(oldest = min(DateCreate),
+                 recent = max(DateCreate))
+```
+
+
+# Receivership
+
+```{r}
+glimpse(rs.filed)
+```
+
+```{r}
+glimpse(rs.settled)
+```
+
+
+```{r}
+glimpse(rs.soldnotset)
+```
+
+```{r}
+rs.filed %>% count(Status)
+```
+
+
+```{r}
+rs.filed %>% summarise(oldest = min(Legal_DateFile),
+                       recent = max(Legal_DateFile))
+```
+```{r fig.height = 4, fig.width = 8}
+rs.filed %>%
+  mutate(filed.month = year(Legal_DateFile)) %>%
+  count(filed.month) %>%
+  ggplot(aes(filed.month, n)) +
+  geom_col() +
+  ggtitle("Receiverships Filed") +
+  theme_iteam_presentations() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank())
+```
+```{r}
+
+```
+
+# 311 Service Requests
+
+```{r}
+sr.vacant %>% glimpse
+```
+
+```{r}
+sr.vacant %>% summarise(latest = max(`Created Date`))
+```
+
+
+# Housing Inspections
+
+```{r}
+insp %>% glimpse
+```
+
+```{r}
+insp %>% count(InspStatus)
+```
+```{r}
+insp %>% count(!is.na(NoteAction))
+```
+```{r}
+insp %>% count(NameInspAction) %>% arrange(desc(n))
+```
+
+```{r}
+insp %>% select() %>% tail(30)
+```
+
+```{r}
+library(readxl)
+sales <- read_excel("../data/raw/sales/City Sales Data Jan 1 2017 through September 2018.xlsx",
+                    skip = 2,
+                    col_names = T) %>%
+  mutate(deed.date = ymd(`Deed Date`),
+         sale.enter.date = ymd(`Date Sale Entered in Land Records`),
+         zip.five = substr(Zipcode, 1, 5),
+         new.owner = substring(`New Owner`, first = 2))
+
+```
+```{r}
+View(sales)
+```
+
+```{r}
+sales %>% count(`How Conveyed`) %>% mutate(pct = n / sum(n))
+```
+
+```{r}
+sales %>% 
+  group_by(zip.five) %>% 
+  summarise(n = n(), med.sales = median(`Sales Price`)) %>% 
+  arrange(desc(n))
+
+```
+
+```{r}
+sales %>%
+  filter(`Sales Price` <= 500000) %>%
+  ggplot(aes(`Sales Price`)) +
+  geom_freqpoly(aes(color = zip.five))
+```
+
+```{r}
+sales %>% 
+  filter(`Sales Price` < 1000000) %>%
+  group_by(new.owner) %>% 
+  summarise(n = n(), avg.sales = mean(`Sales Price`)) %>% 
+  arrange(desc(n))
+```
+
+```{r}
+sales %>%
+  count(grepl("LLC", new.owner, ignore.case = T) |
+          grepl("INC", new.owner, ignore.case = T) |
+          grepl("BANK", new.owner, ignore.case = T)) %>%
+  mutate(pct = n/sum(n))
+```
+```{r}
+sales %>% 
+  #filter(`Sales Price` < 1000000) %>%
+  group_by(new.owner) %>% 
+  mutate(n = n(), avg.sales = mean(`Sales Price`)) %>% 
+  ungroup() %>%
+  count(n > 1)
+```
+```{r}
+sales %>%
+  filter(`Sales Price` < 1000000) %>%
+  group_by(new.owner) %>% 
+  summarise(n = n(),
+            mean.sales = mean(`Sales Price`) %>% round(0)) %>%
+  arrange(desc(n))
+```
+

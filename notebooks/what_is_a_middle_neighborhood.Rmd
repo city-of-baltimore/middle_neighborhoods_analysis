@@ -1,0 +1,514 @@
+---
+title: "What is a Middle Neighborhood?"
+#subtitle: 
+author: "Justin Elszasz"
+date: "February 3, 2019"
+output:
+  html_notebook:
+    toc: yes
+    toc_depth: 2
+    toc_float: false
+    code_folding: hide
+---
+
+This is a brief comparison of definitions for "middle neighborhoods" in Baltimore. The two definitions being compared are:
+
+- U.S. Census block groups with **housing market typologies D through H** based on the [2017 Housing Market Typology](https://planning.baltimorecity.gov/maps-data/housing-market-typology) analysis (healthy = A, B, C; distressed = I, J)
+- U.S. Census block groups with **median household income between 75% and 125% of the city's area median income**
+
+U.S. Census data being used are the 2012-2016 (5-year) American Community Survey estimates.
+
+Are there any other definitions we should consider?
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=8, fig.height=6,
+                      echo=F, warning=F, message=F, include=T)
+```
+
+```{r include = F}
+library(tidyverse)
+library(scales)
+library(ggiteam)
+library(readxl)
+#library(RODBC)
+library(maptools)
+library(leaflet)
+library(rgdal)
+library(rgeos)
+library(sf)
+library(httr)
+library(jsonlite)
+library(geojsonsf)
+library(raster)
+```
+
+```{r include=F}
+source("../code/00_initialize.R")
+
+hmt <- get_block_group_data()
+# pull HMT layer from SQL server
+# server <-   paste0('MSSQL:server=balt-gslistener;',
+#                    'uid=egis_reader;',
+#                    'pwd=baltimore01;',
+#                    'database=housing;',
+#                    'trusted_connection=No')
+# 
+# hmt <- readOGR(server, "housing.HMT2017")
+# 
+# hmt <- SpatialPolygonsDataFrame(hmt, hmt@data)
+# hmt@proj4string <- CRS("+init=epsg:2248")
+# hmt <- spTransform(hmt, CRS("+init=epsg:4326"))
+```
+
+```{r}
+# neighborhood boundaries
+hoods.url <- "https://data.baltimorecity.gov/resource/h3fx-54q3.geojson"
+
+# surely there is a better way, and i tried, but couldn't get anything else to work.
+# from geojson to sf to spatial df. geojson_sp didn't work for me.
+hoods <- geojson_sf(hoods.url)
+hoods <- as_Spatial(hoods)
+hoods <- spTransform(hoods, CRS("+init=epsg:4326"))
+```
+
+```{r}
+# HUD area median income for Baltimore-Columbia-Towson
+ami.2016 <- 86700
+#ami.2018 <- 94900
+
+hmt@data <- hmt@data %>% mutate(
+  
+  # assign healthy, middle, and distressed based on HMT
+  hmt.tier = case_when(
+    MVA17HrdCd %in% c("A", "B", "C") ~ "healthy",
+    MVA17HrdCd %in% c("D", "E", "F", "G", "H") ~ "middle",
+    MVA17HrdCd %in% c("I", "J") ~ "distressed",
+    TRUE ~ "other"),
+  
+  # HMT again, but with middle broken in two
+  hmt.tier.2mid = case_when(
+    MVA17HrdCd %in% c("A", "B", "C") ~ "healthy",
+    MVA17HrdCd %in% c("D", "E") ~ "upper middle",
+    MVA17HrdCd %in% c("F", "G", "H") ~ "lower middle",
+    MVA17HrdCd %in% c("I", "J") ~ "distressed",
+    TRUE ~ "other"),
+
+  # assign healthy, middle, and distressed based on block group median income
+    med.inc.tier = 
+    case_when(
+      (hmt.tier != "other") & 
+        (Median_Household_Income.2016 > 1.25 * ami.2016) ~ "healthy",
+      (hmt.tier != "other") & 
+        (Median_Household_Income.2016 < 0.75 * ami.2016) ~ "distressed",
+      (hmt.tier == "other") ~ NA_character_,
+      TRUE ~ "middle"
+    )
+  )
+```
+
+# Middle Neighborhoods - HMT Definiton
+
+This map shows only middle neighborhoods based on HMT (includes only typologies D through H). Black borders and labels-on-hover are for neighborhoods. At first glance, this removes neighborhoods within the "white L" and "black butterfly" neighborhoods of Baltimore, with most everything else remaining.
+
+```{r}
+mid.hoods.hmt <- subset(hmt, hmt.tier == "middle")
+
+leaflet() %>% 
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addPolygons(data = mid.hoods.hmt, 
+              color = iteam.colors[1],
+              weight = 1,
+              #fillColor = ~pal(MVA17HrdCd),
+              fillColor = iteam.colors[1],
+              fillOpacity = .6,
+              #opacity = 0,
+              label = ~as.character(mid.hoods.hmt$MVA17HrdCd)
+              ) %>%
+  #addGeoJSON(hoods, weight = 1, color = "black", fillOpacity = 0)
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~hoods$label)
+```
+
+Breaking "middle" into "lower middle" (F, G, H) and "upper middle" (D, E) and including "healthy" and "distressed:
+
+```{r}
+#mid.hoods.hmt.2mid <- subset(hmt, hmt.tier.2mid %in% c("lower middle", "upper middle"))
+
+hmt.2mid.pal <- colorFactor(
+  domain = hmt$hmt.tier.2mid,
+  palette = c(iteam.colors[4],
+              iteam.colors[3],
+              "#f4d57f", 
+              NA,
+              iteam.colors[1])
+)
+
+leaflet() %>% 
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addPolygons(data = hmt, 
+              color = iteam.colors[1],
+              weight = 1,
+              fillColor = ~hmt.2mid.pal(hmt.tier.2mid),
+              #fillColor = iteam.colors[1],
+              fillOpacity = .6,
+              #opacity = 0,
+              label = ~as.character(hmt$MVA17HrdCd)
+              ) %>%
+  #addGeoJSON(hoods, weight = 1, color = "black", fillOpacity = 0)
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~hoods$label)
+```
+
+
+# Middle Neighborhoods - Median Income Definition
+
+This map shows only middle neighborhoods based on the median income definition - that is, block groups where the household median income is between 75% and 125% of the area median income ([Baltimore-Columbia-Towson for 2016](https://www.huduser.gov/portal/datasets/il.html#2016)). Qualitatively, this results in a more sparse and disjointed definition of middle neighborhoods. 
+
+```{r}
+mid.hoods.med.inc <- subset(hmt, med.inc.tier == "middle")
+
+leaflet() %>% 
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addPolygons(data = mid.hoods.med.inc, 
+              color = iteam.colors[3],
+              weight = 1,
+              #fillColor = ~pal(MVA17HrdCd),
+              fillColor = iteam.colors[3],
+              fillOpacity = .6,
+              #opacity = 0,
+              label = ~as.character(mid.hoods.med.inc$MVA17HrdCd)
+              ) %>%
+  #addGeoJSON(hoods, weight = 1, color = "black", fillOpacity = 0)
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~hoods$label)
+```
+
+# Comparison of Definitions
+
+The map below overlays the two definitions.
+
+```{r}
+leaflet() %>% 
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addPolygons(data = mid.hoods.med.inc, 
+              color = iteam.colors[3],
+              weight = 1,
+              #fillColor = ~pal(MVA17HrdCd),
+              fillColor = iteam.colors[3],
+              fillOpacity = .7,
+              #opacity = 0,
+              label = ~as.character(mid.hoods.med.inc$MVA17HrdCd)) %>%
+  addPolygons(data = mid.hoods.hmt, 
+              color = iteam.colors[1],
+              weight = 1,
+              #fillColor = ~pal(MVA17HrdCd),
+              fillColor = iteam.colors[1],
+              fillOpacity = .5,
+              #opacity = 0,
+              label = ~as.character(mid.hoods.hmt$MVA17HrdCd)) %>%
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~hoods$label) %>%
+  addLegend("bottomright",
+            colors = c(iteam.colors[1], iteam.colors[3]),
+            labels = c("HMT", "Median Income"))
+```
+
+Below is a table comparing the two definitions based on the number of block groups and population in each tier. About 55% of Baltimore residents live in a middle neighborhood based on the HMT definition. However, only about 14% of the city's population makes between 75% and 125% of AMI. **75% of the city population lives in a block group with median income below 75% of AMI.** (Use the right triangle arrow at the right side of the table heading to see additional columns.)
+
+```{r}
+hmt.summary <- hmt@data %>% 
+  group_by(hmt.tier) %>%
+  summarise(n.block.groups.hmt = n(),
+            pop.hmt = sum(Population.2016)) %>%
+  mutate(pct.block.groups.hmt = percent(n.block.groups.hmt / sum(n.block.groups.hmt)),
+         pct.pop.hmt = percent(pop.hmt / sum(pop.hmt)))
+
+med.inc.summmary <- hmt@data %>% 
+  group_by(med.inc.tier) %>%
+  summarise(n.block.groups.med.inc = n(),
+            pop.med.inc = sum(Population.2016)) %>%
+  mutate(pct.block.groups.med.inc = percent(n.block.groups.med.inc / sum(n.block.groups.med.inc)),
+         pct.pop.med.inc = percent(pop.med.inc / sum(pop.med.inc)))
+
+left_join(hmt.summary, med.inc.summmary, by = c("hmt.tier" = "med.inc.tier")) %>%
+  rename(tier = "hmt.tier") %>%
+  filter(tier != "other")
+```
+
+
+# Incomes in HMT Middle Neighborhoods
+
+The table below shows the combination of neighborhood housing market tier (based on HMT) and median income levels in each market tier (below 75% AMI, between 75% and 125% AMI, more than 125% AMI).
+
+AMI used is \$86,700 based on HUD's FY16 figure for Baltimore-Columbia-Towson. For FY18, the number is \$94,400, however the median income data being used in this analysis is the 5-year ACS estimates ending in 2016.
+
+
+
+```{r}
+hmt@data <- hmt@data %>% mutate(
+  
+  inc.bracket = case_when(
+    Median_Household_Income.2016 > 1.25 * ami.2016 ~ "above 125% AMI",
+    Median_Household_Income.2016 < 0.75 * ami.2016 ~ "below 75% AMI",
+    TRUE ~ "between 75% and 125% AMI"),
+  
+  tier.inc.bracket = as.character(paste0(hmt.tier.2mid, " | ", inc.bracket))
+  
+)
+
+hmt@data %>%
+  group_by(tier.inc.bracket) %>%
+  summarise(n.block.groups = n(),
+            pop = sum(Population.2016)) %>%
+  mutate(pct.city.pop = percent(pop / sum(pop)))
+```
+
+Interesting to note that all housing market tiers include the low and middle median income ranges, but only the healthy HMT tier includes block groups with median incomes over 125% of AMI.
+
+Here's an alarming nugget: 55% of the city population is in a middle neighborhood , and **90% of the middle neighborhood population** lives in a block group with a median income less than 75% AMI:
+
+```{r}
+hmt@data %>%
+  filter(hmt.tier == "middle") %>%
+  group_by(tier.inc.bracket) %>%
+  summarise(n.block.groups = n(),
+            pop = sum(Population.2016)) %>%
+  mutate(pct = percent(pop / sum(pop)))
+```
+
+### Middle Neighborhoods with Low or High Incomes
+
+(No middle neighborhood block groups with >125% AMI.)
+
+```{r}
+tier.income.subset <- subset(hmt,  
+                             hmt.tier.2mid %in% c("lower middle", "upper middle") &
+                             inc.bracket %in% c("above 125% AMI", "below 75% AMI") &)
+
+tier.inc.pal <- colorFactor(
+  domain = tier.income.subset$tier.inc.bracket,
+  palette = c(iteam.colors[1],
+              iteam.colors[3])
+)
+
+leaflet() %>% 
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addPolygons(data = tier.income.subset, 
+              color = iteam.colors[2],
+              weight = 1,
+              fillColor = ~tier.inc.pal(tier.inc.bracket),
+              #fillColor = iteam.colors[1],
+              fillOpacity = 0.7,
+              #opacity = 0,
+              label = ~as.character(paste0(tier.income.subset$tier.inc.bracket))
+              ) %>%
+  #addGeoJSON(hoods, weight = 1, color = "black", fillOpacity = 0)
+  addPolygons(data = hoods,
+             weight = 2,
+             color = "black",
+             opacity = 0.5,
+             fillOpacity = 0,
+             label = ~hoods$label) %>%
+  addLegend("bottomright",
+            colors = c(iteam.colors[1], iteam.colors[3]),
+            labels = c("lower middle | below 75% AMI", "upper middle | below 75% AMI"))
+```
+
+### Healthy and Distressed Neighborhoods with Moderate Income
+
+```{r}
+tier.income.subset <- subset(
+  hmt,  
+  tier.inc.bracket %in% c("distressed | between 75% and 125% AMI",
+                          "healthy | between 75% and 125% AMI")
+)
+
+tier.inc.pal <- colorFactor(
+  domain = tier.income.subset$tier.inc.bracket,
+  palette = c(iteam.colors[4],
+              iteam.colors[5])
+)
+
+leaflet() %>% 
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addPolygons(data = tier.income.subset, 
+              color = iteam.colors[2],
+              weight = 1,
+              fillColor = ~tier.inc.pal(tier.inc.bracket),
+              #fillColor = iteam.colors[1],
+              fillOpacity = 0.7,
+              #opacity = 0,
+              label = ~as.character(paste0(tier.income.subset$tier.inc.bracket))
+              ) %>%
+  #addGeoJSON(hoods, weight = 1, color = "black", fillOpacity = 0)
+  addPolygons(data = hoods,
+             weight = 2,
+             color = "black",
+             opacity = 0.5,
+             fillOpacity = 0,
+             label = ~hoods$label) %>%
+  addLegend("bottomright",
+            colors = c(iteam.colors[4], iteam.colors[5]),
+            labels = c("distressed | between 75% and 125% AMI", 
+                       "healthy | between 75% and 125% AMI"))
+```
+
+
+### Healthy Neighborhoods with Low Median Income
+
+```{r}
+tier.income.subset <- subset(
+  hmt,  
+  tier.inc.bracket %in% c("healthy | below 75% AMI")
+)
+
+tier.inc.pal <- colorFactor(
+  domain = tier.income.subset$tier.inc.bracket,
+  palette = c(iteam.colors[5])
+)
+
+leaflet() %>% 
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addPolygons(data = tier.income.subset, 
+              color = iteam.colors[2],
+              weight = 1,
+              fillColor = ~tier.inc.pal(tier.inc.bracket),
+              #fillColor = iteam.colors[1],
+              fillOpacity = 0.7,
+              #opacity = 0,
+              label = ~as.character(paste0(tier.income.subset$tier.inc.bracket))
+              ) %>%
+  #addGeoJSON(hoods, weight = 1, color = "black", fillOpacity = 0)
+  addPolygons(data = hoods,
+             weight = 2,
+             color = "black",
+             opacity = 0.5,
+             fillOpacity = 0,
+             label = ~hoods$label) %>%
+  addLegend("bottomright",
+            colors = c(iteam.colors[5]),
+            labels = c("healthy | below 75% AMI"))
+
+```
+
+
+# Characteristics of Middle Neighborhoods
+
+Using the HMT definition for middle neighborhoods, the following are looks at block group characteristics grouped by tier.
+
+Because the HMT uses a cluster analysis that includes several housing variables, we'd expect there to be an overlap in the median income distributions because the tiers were not defined by median income.
+
+```{r}
+hmt@data %>% 
+  filter(hmt.tier != "other",
+         !is.na(Median_Household_Income.2016)) %>% 
+  ggplot(aes(Median_Household_Income.2016)) +
+  geom_freqpoly(aes(color = hmt.tier), bins = 50) +
+  theme_iteam_presentations() +
+  labs(
+    title = paste0("Block Group Median Household Income\n",
+                   "Distribution by HMT Market tier"),
+    subtitle = "",
+    x = "Median Household Income",
+    y = "Count",
+    caption = paste0("tier based on 2017 HMT analysis; ",
+                     "median household incomes from 2012-2016 ACS data.")
+  ) +
+  geom_vline(aes(xintercept = ami.2016), color = iteam.colors[2]) +
+  annotate("text", x = ami.2016 + 2500, y = 25, 
+           label = paste0("Baltimore-Columbia-Towson 2016 AMI:\n", dollar(ami.2016)),
+           hjust = 0) +
+  theme(plot.caption = element_text(hjust = 1, face = "plain"))
+```
+
+Difference in median incomes between upper and lower middle neighborhoods.
+
+```{r}
+hmt@data %>% 
+  filter(hmt.tier != "other",
+         !is.na(Median_Household_Income.2016),
+         hmt.tier == "middle") %>% 
+  ggplot(aes(Median_Household_Income.2016)) +
+  geom_freqpoly(aes(color = hmt.tier.2mid), bins = 50) +
+  theme_iteam_presentations() +
+  labs(
+    title = paste0("Middle Neighborhood\nBlock Group Median Household Income\n",
+                   "Distribution by HMT Market tier"),
+    subtitle = "",
+    x = "Median Household Income",
+    y = "Count",
+    caption = paste0("tier based on 2017 HMT analysis; ",
+                     "median household incomes from 2012-2016 ACS data.")
+  ) +
+  geom_vline(aes(xintercept = ami.2016), color = iteam.colors[2]) +
+  annotate("text", x = ami.2016 - 2500, y = 16, 
+           label = paste0("Baltimore-Columbia-Towson 2016 AMI:\n", dollar(ami.2016)),
+           hjust = 1) +
+  theme(plot.caption = element_text(hjust = 1, face = "plain"),
+        legend.title = element_blank())
+```
+
+Middle neighborhoods do seem to skew towards older homeownership.
+
+```{r}
+hmt@data %>% 
+  filter(hmt.tier != "other") %>% 
+  ggplot(aes(Percent_Homeowner_Over_65.2016)) +
+  geom_freqpoly(aes(color = hmt.tier), stat = "density") +
+  theme_iteam_presentations() +
+  labs(
+    title = "% Homeowners 65+ by HMT Market tier",
+    subtitle = "",
+    x = "% Homeowners 65+ y.o.",
+    y = "Density",
+    caption = paste0("tier based on 2017 HMT analysis; ",
+                     "% homeowners 65 and over from 2012-2016 ACS data.")
+  ) +
+  theme(plot.caption = element_text(hjust = 1, face = "plain"))
+```
+
+Below is the average block group percentage of homeowners that are over the age of 65.
+
+```{r}
+hmt@data %>%
+  filter(hmt.tier != "other") %>%
+  group_by(hmt.tier) %>%
+  summarise(mean.pct.ho.over65 = mean(Percent_Homeowner_Over_65.2016))
+```
+
+While about 54% of the city population lives in middle neighborhoods, 65% of the households with a homeowner 65 years of age or older live in a middle neighborhood.
+
+```{r}
+hmt@data %>%
+  filter(hmt.tier != "other") %>%
+  mutate(hh = Population.2016 / Household_Size.2016,
+         hh.own = hh * Percent_Owner.2016,
+         hh.owner.over65 = hh.own * Percent_Homeowner_Over_65.2016) %>%
+  group_by(hmt.tier) %>%
+  summarise(hh.owner.over65 = sum(hh.owner.over65)) %>%
+  mutate(pct.city.owner.over65 = percent(hh.owner.over65 / sum(hh.owner.over65)))
+```
+
