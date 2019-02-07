@@ -37,11 +37,11 @@ Are there areas of Baltimore that are over-performing or under-performing in ter
 
 On initial inspection it's clear that ther is a positive linear relationship between median household income and median sales price. There are also block groups that have 0 for the median household income or for the median sales price for whatever reason, so we'll filter those out.
 
-```{r fig.width = 7, fig.height = 5}
+```{r fig.width = 6, fig.height = 4}
 hmt@data %>%
   ggplot(aes(Median_Household_Income.2016, MSP1517eo)) +
   geom_point() +
-  theme_iteam_presentations() +
+  theme_iteam_google_docs() +
   #scale_color_discrete_iteam() +
   #scale_color_manual(values = c(iteam.colors[3], iteam.colors[4], iteam.colors[2]), aesthetics = "color") +
   #geom_smooth(method = "lm", color = iteam.colors[5]) + 
@@ -92,11 +92,11 @@ One way* to examine this is to look at points that fall outside a prediction int
 
 *This is actually a little hokey - we shouldn't be using the model on the same data that we built the model with, but it'll suffice for our purposes.
 
-```{r fig.width = 7, fig.height = 5}
+```{r fig.width = 6, fig.height = 4}
 lm.data@data %>%
   ggplot(aes(Median_Household_Income.2016, MSP1517eo)) +
   geom_point(aes(color = outside.pred.int)) +
-  theme_iteam_presentations() +
+  theme_iteam_google_docs() +
   #scale_color_discrete_iteam() +
   scale_color_manual(values = c(iteam.colors[3], iteam.colors[4], iteam.colors[2]), aesthetics = "color") +
   geom_smooth(method = "lm", color = iteam.colors[5]) + 
