@@ -303,7 +303,7 @@ hmt@data %>%
 ```{r}
 tier.income.subset <- subset(hmt,  
                              hmt.tier.2mid %in% c("lower middle", "upper middle") &
-                             inc.bracket %in% c("above 125% AMI", "below 75% AMI") &)
+                             inc.bracket %in% c("above 125% AMI", "below 75% AMI") )
 
 tier.inc.pal <- colorFactor(
   domain = tier.income.subset$tier.inc.bracket,
@@ -511,4 +511,29 @@ hmt@data %>%
   summarise(hh.owner.over65 = sum(hh.owner.over65)) %>%
   mutate(pct.city.owner.over65 = percent(hh.owner.over65 / sum(hh.owner.over65)))
 ```
+```{r}
+lm.data <- hmt@data %>% filter(Median_Household_Income.2016 != 0)
+lm.model <- lm(MSP1517eo ~ Median_Household_Income.2016, data = lm.data)
+
+lm.model
+
+library(plotly)
+
+inc.price <- hmt@data %>%
+  ggplot(aes(Median_Household_Income.2016, MSP1517eo)) +
+  geom_point() +
+  theme_iteam_presentations() +
+  geom_abline(aes(intercept = lm.model$coefficients[1], 
+                  slope = lm.model$coefficients[2])) +
+  xlab("Median Household Income") +
+  ylab("Median Sales Price")
+
+ggplotly(inc.price)
+  
+
+summary(lm.model)
+```
+
+
+
 

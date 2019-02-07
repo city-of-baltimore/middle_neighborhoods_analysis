@@ -3,9 +3,9 @@
 
 get_block_group_data <- function(){
   
-  library(rgdal)
-  library(readxl)
-  library(tidyverse)
+  suppressPackageStartupMessages(library(rgdal))
+  suppressPackageStartupMessages(library(readxl))
+  suppressPackageStartupMessages(library(tidyverse))
   
   # Census block groups: Housing Market Typology plus Census block group data
   
@@ -15,7 +15,7 @@ get_block_group_data <- function(){
                          'database=housing;',
                          'trusted_connection=No')
   message(paste0(format(Sys.time(), format="%H:%M:%S"), ": Grabbing HMT geospatial table from EGIS server."))
-  hmt <- readOGR(housing.db, "housing.HMT2017")
+  hmt <- readOGR(housing.db, "housing.HMT2017", verbose = F)
   
   message(paste0(format(Sys.time(), format="%H:%M:%S"), ": Formatting HMT geospatial table."))
   hmt <- SpatialPolygonsDataFrame(hmt, hmt@data)
@@ -59,7 +59,18 @@ get_block_group_data <- function(){
 
 
 get_neighborhood_boundaries <- function(){
+  suppressPackageStartupMessages(library(geojsonsf))
+  suppressPackageStartupMessages(library(sf))
   # load Baltimore neighborhood boundaries
+  # neighborhood boundaries
+  hoods.url <- "https://data.baltimorecity.gov/resource/h3fx-54q3.geojson"
   
+  # surely there is a better way, and i tried, but couldn't get anything else to work.
+  # from geojson to sf to spatial df. geojson_sp didn't work for me.
+  hoods <- geojson_sf(hoods.url)
+  hoods <- as_Spatial(hoods)
+  hoods <- spTransform(hoods, CRS("+init=epsg:4326"))
+  
+  return(hoods)
 }
 

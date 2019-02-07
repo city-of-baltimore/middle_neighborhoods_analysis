@@ -1,0 +1,163 @@
+---
+title: "Elevated and Suppressed Sales Prices"
+#subtitle: 
+author: "Justin Elszasz"
+date: "February 6, 2019"
+output:
+  html_notebook:
+    toc: yes
+    toc_depth: 2
+    toc_float: false
+    code_folding: hide
+---
+
+This is a brief exploration of median sales prices by block group relative to median household income for Baltimore.
+
+Data used are U.S. Census American Community Survey (ACS) 5-year estimates for 2012-2016 at the block group level.
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=6, fig.height=4, echo=T, warning=F, message=F, include=T)
+```
+
+```{r echo = F, include = T}
+source("../code/00_initialize.R")
+suppressMessages(library(leaflet))
+
+options(scipen=100000)
+
+hmt <- get_block_group_data()
+hoods <- get_neighborhood_boundaries()
+```
+
+# The Question
+
+Are there areas of Baltimore that are over-performing or under-performing in terms of median sales price compared to what we'd expect based on the area's median household income?
+
+# The Model
+
+On initial inspection it's clear that ther is a positive linear relationship between median household income and median sales price. There are also block groups that have 0 for the median household income or for the median sales price for whatever reason, so we'll filter those out.
+
+```{r fig.width = 7, fig.height = 5}
+hmt@data %>%
+  ggplot(aes(Median_Household_Income.2016, MSP1517eo)) +
+  geom_point() +
+  theme_iteam_presentations() +
+  #scale_color_discrete_iteam() +
+  #scale_color_manual(values = c(iteam.colors[3], iteam.colors[4], iteam.colors[2]), aesthetics = "color") +
+  #geom_smooth(method = "lm", color = iteam.colors[5]) + 
+  #geom_ribbon(aes(ymin = lwr, ymax = upr), fill = iteam.colors[5], alpha = 0.2) +
+  labs(
+    title = "Baltimore Census Block Group\nHome Sales Price v. Income",
+    x = "Median Household Income",
+    y = "Median Sales Price",
+    caption = paste0(
+      "U.S. Census ACS 2012-2016 Data, block group geography.\n"
+    )
+  ) +
+  theme(plot.caption = element_text(face = "plain"),
+        legend.title = element_blank())
+```
+
+```{r}
+lm.data <- subset(hmt, (Median_Household_Income.2016 > 0) & (MSP1517eo > 0))
+```
+
+Filtering out any block groups with median household income or median sales price of 0, we're left with `r nrow(lm.data@data)` block groups.
+
+Applying a linear regression we get back several pieces of information.
+
+```{r}
+# linear regression
+lm.model <- lm(MSP1517eo ~ Median_Household_Income.2016, data = lm.data@data)
+
+# select only columns we want to look at and tack on the prediction intervals
+lm.data@data <- lm.data@data %>% 
+  select(bg, MSP1517eo, Median_Household_Income.2016) %>%
+  cbind(predict.lm(lm.model, lm.data, interval = "prediction", level = 0.90)) %>%
+  mutate(outside.pred.int = as.factor(case_when(
+    MSP1517eo > upr ~ "above",
+    MSP1517eo < lwr ~ "below",
+    TRUE ~ "inside"))
+  )
+```
+
+**For every $10,000 increase in the median household income, we expect a \$`r round(10000 * coefficients(lm.model)[2], 0)` increase in the median sales price for the block group.** With 90% confidence we can say that increase is between \$`r round(10000 * confint(lm.model, level = .90)[2], 0)`
+ and \$`r round(10000 * confint(lm.model, level = .90)[4], 0)` for every $10,000 increase in median household income. This range is shown in the plot below in gray.
+ 
+# Under- and Over-Performance 
+ 
+So given the data and this model, what areas are "overperforming" or "underperforming" compared to where we'd expect their median sales price to fall?
+
+One way* to examine this is to look at points that fall outside a prediction interval. A prediction interval is the range where we'd expect to see new data points show up with some level of confidence. We'll pick a 90% prediction interval level (i.e. we'd expect to see new data to pop up in this range 90% of the time). That range is shown in light blue.
+
+*This is actually a little hokey - we shouldn't be using the model on the same data that we built the model with, but it'll suffice for our purposes.
+
+```{r fig.width = 7, fig.height = 5}
+lm.data@data %>%
+  ggplot(aes(Median_Household_Income.2016, MSP1517eo)) +
+  geom_point(aes(color = outside.pred.int)) +
+  theme_iteam_presentations() +
+  #scale_color_discrete_iteam() +
+  scale_color_manual(values = c(iteam.colors[3], iteam.colors[4], iteam.colors[2]), aesthetics = "color") +
+  geom_smooth(method = "lm", color = iteam.colors[5]) + 
+  geom_ribbon(aes(ymin = lwr, ymax = upr), fill = iteam.colors[5], alpha = 0.2) +
+  labs(
+    title = "Baltimore Census Block Group\nHome Sales Price v. Income",
+    x = "Median Household Income",
+    y = "Median Sales Price",
+    caption = paste0(
+      "Linear fit (blue line) with 90% confidence interval (gray band) and",
+      "90% prediction interval\n(light blue band) shown. ",
+      "U.S. Census ACS 2012-2016 Data, block group geography.\n"
+    )
+  ) +
+  theme(plot.caption = element_text(face = "plain"),
+        legend.title = element_blank())
+```
+
+
+Blue dots above and blue block groups in the map below are the "overperformers," red are the "underperformers." Only 4 block groups fall below the 90% prediction interval and 41 block groups are above the 90% prediction interval. 
+
+```{r}
+lm.data@data %>% count(outside.pred.int)
+```
+
+Where are they?
+
+```{r}
+pred.pal <- colorFactor(
+  domain = lm.data$outside.pred.int,
+  palette = c(iteam.colors[3], iteam.colors[4], NA)
+)
+
+leaflet() %>% 
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addPolygons(data = lm.data,
+              color = iteam.colors[2],
+              weight = 1,
+              opacity = 0.7,
+              fillColor = ~pred.pal(outside.pred.int),
+              #fillColor = iteam.colors[1],
+              fillOpacity = .7,
+              #opacity = 0,
+              label = ~as.character(lm.data$bg)
+  ) %>%
+  addLegend("bottomright",
+            colors = c(iteam.colors[3], iteam.colors[4]),
+            labels = c("above", "below")) %>%
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.6,
+              fillOpacity = 0, 
+              label = ~hoods$label)
+```
+
+Many block groups that are already in healthy neighborhoods actually get higher sales prices than we'd expect given their household incomes. Two additional block groups that "outperform" that may be of note: one in Middle East that conatins Eager Park and much of the development near Johns Hopkins Hospital, the other in Patterson Park bordering Pulaski Highway on its north side.
+
+# Future Work?
+
+This model is based only on a single variable - the median household income. Next steps would be to incorporate additional variables to understand their contribution to the median sales price and how that informs our conception of "under" or "over" performance.
+
+
