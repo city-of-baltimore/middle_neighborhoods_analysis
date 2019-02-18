@@ -160,4 +160,8 @@ Many block groups that are already in healthy neighborhoods actually get higher 
 
 This model is based only on a single variable - the median household income. Next steps would be to incorporate additional variables to understand their contribution to the median sales price and how that informs our conception of "under" or "over" performance.
 
+```{r}
+glimpse(hmt@data)
+```
+
 

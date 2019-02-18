@@ -1,5 +1,29 @@
 
+get_egis_table <- function(db, table){
+  
+  table.full <- paste0(db, ".", table)
+  
+  message(paste0(Sys.time(), ": ", "Retrieving table ", table.full)) 
+  
+  db <- paste0('MSSQL:server=', VARS$EGIS_SERVER, ';',
+               'uid=', VARS$EGIS_SERVER_USER,';',
+               'pwd=', VARS$EGIS_SERVER_PWD, ';',
+               'database=', db, ';',
+               'trusted_connection=No')
+  
+  raw <- readOGR(db, table.full, verbose = F)
+  
+  message(paste0(Sys.time(), "Table ", table.full, " retrieved")) 
+  return(raw)
+}
 
+get_hmt_data <- function(){
+  
+  hmt.raw <- get_egis_table("housing", "HMT2017")
+  
+  
+  
+}
 
 get_block_group_data <- function(){
   
@@ -21,6 +45,19 @@ get_block_group_data <- function(){
   hmt <- SpatialPolygonsDataFrame(hmt, hmt@data)
   hmt@proj4string <- CRS("+init=epsg:2248")
   hmt <- spTransform(hmt, CRS("+init=epsg:4326"))
+  
+  
+  hmt@data <- hmt@data %>% mutate(
+    
+    # HMT again, but with middle broken in two
+    hmt.tier = case_when(
+      MVA17HrdCd %in% c("A", "B", "C") ~ "healthy",
+      MVA17HrdCd %in% c("D", "E") ~ "upper middle",
+      MVA17HrdCd %in% c("F", "G", "H") ~ "lower middle",
+      MVA17HrdCd %in% c("I", "J") ~ "distressed",
+      TRUE ~ "other")
+    
+  )
   
   # census block group data (spreadsheets provided by M. Galdi)
 
@@ -74,3 +111,26 @@ get_neighborhood_boundaries <- function(){
   return(hoods)
 }
 
+get_911cfs_type <- function(cfs.type){
+  
+  
+  
+}
+
+
+unlist_lat_long <- function(df, colname){
+  
+  df$long <- sapply(
+    df[, colname], 
+    FUN = function(x){toString(x[[1]][[1]])}) %>%
+    unlist() %>% 
+    as.numeric()
+  
+  df$lat <- sapply(
+    df[, colname], 
+    FUN = function(x){toString(x[[2]][[1]])}) %>%
+    unlist() %>% 
+    as.numeric()
+  
+  return(df)
+}

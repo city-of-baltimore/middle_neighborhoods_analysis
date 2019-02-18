@@ -1,0 +1,97 @@
+---
+title: "Intro to Middle Neighborhoods"
+author: "Justin Elszasz, Mayor's Office of Innovation"
+email: "justin.elszasz@baltimorecity.gov"
+date: "Sunday, February 22, 2019"
+css: iteam_pre.css
+output: 
+  slidy_presentation:
+    toc: true
+---
+
+```{r setup, include = FALSE, echo = FALSE, message = FALSE, cache = TRUE}
+knitr::opts_chunk$set(echo = F, warning = F, message = F, include = T,
+                      fig.width = 10, fig.height = 5)
+
+``` 
+
+```{r init, cache = T, include = F}
+source("../code/00_initialize.R")
+
+library(leaflet)
+library(knitr)
+```
+
+```{r get.data, cache = T, include = F}
+hmt <- get_block_group_data()
+hoods <- get_neighborhood_boundaries()
+```
+
+```{r include = F}
+# HUD area median income for Baltimore-Columbia-Towson
+ami.2016 <- 86700
+#ami.2018 <- 94900
+```
+
+
+# Housing Market Typology 
+
+- Performed every few years by Reinvestment Fund
+- 
+
+
+# The Housing Market Typologies
+
+# Our Middle Neighborhoods
+
+Breaking "middle" into "lower middle" (F, G, H) and "upper middle" (D, E) and including "healthy" and "distressed:
+
+```{r cache = T, echo = F}
+#mid.hoods.hmt.2mid <- subset(hmt, hmt.tier.2mid %in% c("lower middle", "upper middle"))
+
+hmt.pal <- colorFactor(
+  domain = hmt$hmt.tier,
+  palette = c("gray65",
+              "gray85",
+              "#f0c650", 
+              NA,
+              iteam.colors[1])
+)
+
+leaflet() %>% 
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addPolygons(data = hmt, 
+              color = iteam.colors[2],
+              weight = 1,
+              fillColor = ~hmt.pal(hmt.tier),
+              #fillColor = iteam.colors[1],
+              fillOpacity = .6,
+              opacity = .7,
+              label = ~as.character(hmt$MVA17HrdCd)
+              ) %>%
+  #addGeoJSON(hoods, weight = 1, color = "black", fillOpacity = 0)
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~hoods$label)
+```
+
+# Income levels in our middle neighborhoods are well below area's
+
+
+
+
+```{r}
+kable(hmt@data %>% head())
+```
+
+# Middle neighborhoods have more older homeowners
+
+```{r}
+
+```
+
+

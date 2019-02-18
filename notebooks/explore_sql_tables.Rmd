@@ -16,6 +16,8 @@ library(RODBC)
 library(tidyverse)
 library(lubridate)
 library(ggiteam)
+
+source("../code/00_initialize.R")
 ```
 
 ```{r}
@@ -148,7 +150,8 @@ vbn %>%
   summarise(count = n(),
             oldest = min(DateNotice), 
             latest = max(DateNotice),
-            avg_age = mean(today() - DateNotice))
+            avg_age = mean(today() - DateNotice),
+            med_age = median(today() - DateNotice))
 ```
 
 # Work Orders
@@ -227,7 +230,7 @@ sr.vacant %>% summarise(latest = max(`Created Date`))
 # Housing Inspections
 
 ```{r}
-insp %>% glimpse
+insp %>% tail(100) %>% glimpse
 ```
 
 ```{r}
