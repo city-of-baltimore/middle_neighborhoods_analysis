@@ -3,7 +3,7 @@ title: "Intro to Middle Neighborhoods"
 author: "Justin Elszasz, Mayor's Office of Innovation"
 email: "justin.elszasz@baltimorecity.gov"
 date: "Sunday, February 22, 2019"
-css: iteam_pre.css
+css: iteam_pres.css
 output: 
   slidy_presentation:
     toc: true
@@ -47,7 +47,7 @@ ami.2016 <- 86700
 Breaking "middle" into "lower middle" (F, G, H) and "upper middle" (D, E) and including "healthy" and "distressed:
 
 ```{r cache = T, echo = F}
-#mid.hoods.hmt.2mid <- subset(hmt, hmt.tier.2mid %in% c("lower middle", "upper middle"))
+#mid.hoods.hmt <- subset(hmt, hmt.tier %in% c("lower middle", "upper middle"))
 
 hmt.pal <- colorFactor(
   domain = hmt$hmt.tier,
@@ -82,16 +82,64 @@ leaflet() %>%
 # Income levels in our middle neighborhoods are well below area's
 
 
-
-
-```{r}
-kable(hmt@data %>% head())
+```{r echo = F}
+hmt@data %>% 
+  filter(hmt.tier != "other",
+         !is.na(Median_Household_Income.2016),
+         Median_Household_Income.2016 > 0,
+         hmt.tier %in% c("lower middle", "upper middle")) %>% 
+  ggplot(aes(Median_Household_Income.2016)) +
+  geom_freqpoly(aes(color = hmt.tier), bins = 50) +
+  theme_iteam_presentations() +
+  labs(
+    title = paste0("Middle Neighborhood\nBlock Group Median Household Income\n",
+                   "Distribution by HMT Market tier"),
+    subtitle = "",
+    x = "Median Household Income",
+    y = "Count",
+    caption = paste0("tier based on 2017 HMT analysis; ",
+                     "median household incomes from 2012-2016 ACS data.")
+  ) +
+  geom_vline(aes(xintercept = ami.2016), color = iteam.colors[2]) +
+  annotate("text", x = ami.2016 - 2500, y = 16, 
+           label = paste0("Baltimore-Columbia-Towson 2016 AMI:\n", dollar(ami.2016)),
+           hjust = 1) +
+  theme(plot.caption = element_text(hjust = 1, face = "plain"),
+        legend.title = element_blank())
 ```
 
 # Middle neighborhoods have more older homeowners
 
-```{r}
 
+```{r echo = F}
+hmt@data %>%
+  filter(hmt.tier != "other") %>%
+  group_by(hmt.tier) %>%
+  summarise(mean.pct.ho.over65 = percent(mean(Percent_Homeowner_Over_65.2016)),
+            med.pct.ho.over65 = percent(median(Percent_Homeowner_Over_65.2016))) %>%
+  rename("Mean % Homeowners 65+" = mean.pct.ho.over65,
+         "Median % Homeowners 65+" = med.pct.ho.over65) %>%
+  kable()
 ```
+
+```{r echo = F}
+hmt@data %>% 
+  filter(hmt.tier != "other") %>% 
+  ggplot(aes(Percent_Homeowner_Over_65.2016)) +
+  geom_freqpoly(aes(color = hmt.tier), stat = "density") +
+  theme_iteam_presentations() +
+  labs(
+    title = "% Homeowners 65+ by HMT Market tier",
+    subtitle = "",
+    x = "% Homeowners 65+ y.o.",
+    y = "Density",
+    caption = paste0("tier based on 2017 HMT analysis; ",
+                     "% homeowners 65 and over from 2012-2016 ACS data.")
+  ) +
+  theme(plot.caption = element_text(hjust = 1, face = "plain")) +
+  scale_x_continuous(labels = percent)
+```
+```
+
 
 

@@ -493,8 +493,8 @@ Below is the average block group percentage of homeowners that are over the age 
 hmt@data %>%
   filter(hmt.tier != "other") %>%
   group_by(hmt.tier) %>%
-  summarise(mean.pct.ho.over65 = mean(Percent_Homeowner_Over_65.2016),
-            med.pct.ho.over65 = median(Percent_Homeowner_Over_65.2016))
+  summarise(mean.pct.ho.over65 = percent(mean(Percent_Homeowner_Over_65.2016)),
+            med.pct.ho.over65 = percent(median(Percent_Homeowner_Over_65.2016)))
 ```
 
 While about 54% of the city population lives in middle neighborhoods, 65% of the households with a homeowner 65 years of age or older live in a middle neighborhood.

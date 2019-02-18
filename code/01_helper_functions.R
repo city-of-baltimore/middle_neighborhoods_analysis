@@ -25,7 +25,48 @@ get_hmt_data <- function(){
   
 }
 
-get_block_group_data <- function(){
+load_block_group_data <- function(load.cache = T){
+  
+  if(load.cache == T){
+    
+    filename <-paste0(VARS$RAW_DATA, "/hmt/hmt_join_acs.rds")
+    
+    # load existing cache or create it if it doesn't exist
+    hmt <- tryCatch(
+      
+      expr = {
+        message(format(paste0(Sys.time(), format="%H:%M:%S"), ": ", "Loading cached data.")) 
+          hmt <- readRDS(filename)
+          return(hmt)
+      },
+      
+      error = function(cond){
+        message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "Cache does not exist. Creating cache."))
+        hmt <- get_block_group_data_from_server()
+        
+        if(file.exists(paste0(VARS$RAW_DATA, "/hmt")) == F){
+          message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "Directory does not exist. Creating directory.")) 
+          dir.create(paste0(VARS$RAW_DATA, "/hmt"))
+        }
+        
+        
+        saveRDS(hmt, file = filename)
+        message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "Cache saved to ", filename)) 
+        return(hmt)
+        message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "HMT data succesfully loaded.")) 
+      }
+    )
+  } else {
+    # load data directly from server 
+    message(paste0(Sys.time(), ": ", "Loading directly from server."))
+    hmt <- get_block_group_data_from_server()
+  }
+  return(hmt)
+  message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "HMT data succesfully loaded."))
+}
+
+
+get_block_group_data_from_server <- function(){
   
   suppressPackageStartupMessages(library(rgdal))
   suppressPackageStartupMessages(library(readxl))
