@@ -37,7 +37,7 @@ ami.2016 <- 86700
 # Housing Market Typology 
 
 - Performed every few years by Reinvestment Fund
-- 
+- Uses 8 variables
 
 
 # The Housing Market Typologies
