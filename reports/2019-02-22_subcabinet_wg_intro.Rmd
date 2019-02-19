@@ -15,15 +15,15 @@ knitr::opts_chunk$set(echo = F, warning = F, message = F, include = T,
 
 ``` 
 
-```{r init, cache = T, include = F}
-source("../code/00_initialize.R")
+```{r init, include = T}
+source("../src/00_initialize.R")
 
 library(leaflet)
 library(knitr)
 ```
 
-```{r get.data, cache = T, include = F}
-hmt <- get_block_group_data()
+```{r get.data, cache = T}
+hmt <- load_block_group_data(load.cache = T)
 hoods <- get_neighborhood_boundaries()
 ```
 
@@ -46,7 +46,7 @@ ami.2016 <- 86700
 
 Breaking "middle" into "lower middle" (F, G, H) and "upper middle" (D, E) and including "healthy" and "distressed:
 
-```{r cache = T, echo = F}
+```{r echo = F}
 #mid.hoods.hmt <- subset(hmt, hmt.tier %in% c("lower middle", "upper middle"))
 
 hmt.pal <- colorFactor(
@@ -84,8 +84,7 @@ leaflet() %>%
 
 ```{r echo = F}
 hmt@data %>% 
-  filter(hmt.tier != "other",
-         !is.na(Median_Household_Income.2016),
+  filter(!is.na(Median_Household_Income.2016),
          Median_Household_Income.2016 > 0,
          hmt.tier %in% c("lower middle", "upper middle")) %>% 
   ggplot(aes(Median_Household_Income.2016)) +
@@ -101,7 +100,7 @@ hmt@data %>%
                      "median household incomes from 2012-2016 ACS data.")
   ) +
   geom_vline(aes(xintercept = ami.2016), color = iteam.colors[2]) +
-  annotate("text", x = ami.2016 - 2500, y = 16, 
+  annotate("text", x = ami.2016 - 2500, y = 12,
            label = paste0("Baltimore-Columbia-Towson 2016 AMI:\n", dollar(ami.2016)),
            hjust = 1) +
   theme(plot.caption = element_text(hjust = 1, face = "plain"),
