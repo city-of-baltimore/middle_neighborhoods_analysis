@@ -2,7 +2,7 @@
 title: "Intro to Middle Neighborhoods"
 author: "Justin Elszasz, Mayor's Office of Innovation"
 email: "justin.elszasz@baltimorecity.gov"
-date: "Sunday, February 22, 2019"
+date: "Friday, February 22, 2019"
 css: iteam_pres.css
 output: 
   slidy_presentation:
@@ -15,16 +15,20 @@ knitr::opts_chunk$set(echo = F, warning = F, message = F, include = T,
 
 ``` 
 
-```{r init, include = T}
+```{r init, include = F}
 source("../src/00_initialize.R")
 
 library(leaflet)
 library(knitr)
 ```
 
-```{r get.data, cache = T}
+```{r get.data, cache = F, echo = F}
 hmt <- load_block_group_data(load.cache = T)
 hoods <- get_neighborhood_boundaries()
+#sr <- get_2018_service_requests_from_ob()
+sr <- load_2018_service_requests(load.cache = T)
+#sr <- spTransform(sr, CRS("+init=epsg:4326"))
+
 ```
 
 ```{r include = F}
@@ -138,7 +142,105 @@ hmt@data %>%
   theme(plot.caption = element_text(hjust = 1, face = "plain")) +
   scale_x_continuous(labels = percent)
 ```
+
+
+# Top 311 Service Request Types by Tier
+
+```{r echo = F}
+sr.norats <- subset(sr, srtype != "SW-Rat Rubout Proactive")
+
+all.sr.bg <- over(sr.norats, hmt)
+
+sr.norats@data <- bind_cols(sr.norats@data, all.sr.bg)
+
+all.sr.bg.counts <- as.data.frame(table(all.sr.bg$bg))
+
+hmt@data <- left_join(hmt@data, all.sr.bg.counts, by = c("bg" = "Var1")) 
+  
+hmt@data <- hmt@data %>%
+  rename(all.sr.count = Freq) %>%
+  mutate(sr.ratio = 1000 * all.sr.count / Population.2016)
 ```
 
 
+```{r echo = F, include = F}
+# quick visual verification
+
+map.points <- sr.norats[sample(1:length(sr.norats), 5000), ]
+
+leaflet() %>%
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>% 
+  addCircleMarkers(data = map.points, radius = 1)
+  
+```
+
+# Total Service Requests per 1,000 Residents
+
+```{r echo = F}
+bins <- c(0, 100, 200, 500, 1000, 1500, 2000, Inf)
+pal <- colorBin("YlOrRd", domain = hmt$sr.ratio, bins = bins)
+
+leaflet() %>%
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>% 
+  addPolygons(data = hmt, 
+              fillColor = ~pal(hmt$sr.ratio), 
+              color = iteam.colors[2], 
+              weight = 1, 
+              fillOpacity = 1,
+              label = ~as.character(round(hmt$sr.ratio, 0 )))
+
+```
+
+```{r echo = F}
+hmt@data %>%
+  ggplot(aes(sr.ratio)) +
+  geom_histogram() +
+  xlim(c(0, 2500)) +
+  theme_iteam_google_docs()
+```
+
+# Total Service Requests by HMT Tier
+
+```{r echo = F}
+sr.by.hmt.tier <- hmt@data %>%
+  group_by(hmt.tier) %>%
+  summarise(total.pop = sum(Population.2016),
+            sr.count = sum(all.sr.count),
+            sr.ratio = round(sr.count / total.pop, 2)) %>%
+  arrange(desc(sr.ratio))
+
+sr.by.hmt.tier %>% kable()
+```
+
+# Top Service Request Type by HMT Tier
+
+```{r echo = F, warning = F}
+sr.norats@data %>% 
+  filter(!is.na(hmt.tier)) %>%
+  count(hmt.tier, srtype) %>% 
+  mutate(hmt.tier = as.factor(hmt.tier),
+         srtype = as.factor(srtype)) %>%
+  left_join(sr.by.hmt.tier %>% select(hmt.tier, total.pop), by = "hmt.tier") %>%
+  mutate(sr.ratio = round(1000 * n / total.pop, 1)) %>%
+  arrange(hmt.tier, desc(sr.ratio)) %>%
+  group_by(hmt.tier) %>%
+  filter(row_number() %in% c(1)) %>%
+  kable()
+```
+
+```{r echo = F, warning = F}
+sr.norats@data %>% 
+  filter(!is.na(hmt.tier)) %>%
+  count(hmt.tier, srtype) %>% 
+  mutate(hmt.tier = as.factor(hmt.tier),
+         srtype = as.factor(srtype)) %>%
+  left_join(sr.by.hmt.tier %>% select(hmt.tier, total.pop), by = "hmt.tier") %>%
+  mutate(sr.ratio = round(1000 * n / total.pop, 1)) %>%
+  arrange(hmt.tier, desc(sr.ratio)) %>%
+  group_by(hmt.tier) %>%
+  mutate(rank = row_number()) %>%
+  kable()
+```
 

@@ -24,7 +24,7 @@ knitr::opts_chunk$set(echo = FALSE,
 
 
 ```{r}
-source("../code/00_initialize.R")
+source("../src/00_initialize.R")
 library(RSocrata)
 library(scales)
 library(lubridate)
@@ -33,19 +33,7 @@ library(leaflet)
 
 
 ```{r}
-hmt <- get_block_group_data()
-
-hmt@data <- hmt@data %>% mutate(
-  
-  # HMT again, but with middle broken in two
-  hmt.tier.2mid = case_when(
-    MVA17HrdCd %in% c("A", "B", "C") ~ "healthy",
-    MVA17HrdCd %in% c("D", "E") ~ "upper middle",
-    MVA17HrdCd %in% c("F", "G", "H") ~ "lower middle",
-    MVA17HrdCd %in% c("I", "J") ~ "distressed",
-    TRUE ~ "other")
-  
-)
+hmt <- load_block_group_data(load.cache = T)
 
 cfs.narc <- read.socrata("https://data.baltimorecity.gov/resource/m8g9-abgb.json?description=NARCOTICSOutside")
 #crime <- read.socrata("https://data.baltimorecity.gov/resource/4ih5-d5d5.json")
@@ -138,27 +126,49 @@ leaflet() %>%
 ```
 
 ```{r}
-tier.pop <- hmt@data %>% group_by(hmt.tier.2mid) %>% summarise(tier.pop = sum(Population.2016))
+tier.pop <- hmt@data %>% group_by(hmt.tier) %>% summarise(tier.pop = sum(Population.2016))
 
 cfs.narc.geo@data %>%
   mutate(call.year = year(calldatetime)) %>%
-  filter(call.year != 2019, !is.na(hmt.tier.2mid)) %>%
-  count(hmt.tier.2mid) %>%
-  left_join(tier.pop, by = "hmt.tier.2mid") %>%
+  filter(call.year != 2019, !is.na(hmt.tier)) %>%
+  count(hmt.tier) %>%
+  left_join(tier.pop, by = "hmt.tier") %>%
   ungroup() %>% 
   mutate(annual.narc.call.per1000 = round(1000 * n / tier.pop / 4, 1),
          pct.pop = percent(tier.pop / sum(tier.pop, na.rm = T)),
-         pct.calls = percent(n / sum(n)))
+         pct.calls = percent(n / sum(n))) %>%
+  arrange(desc(annual.narc.call.per1000))
 ```
 
 ```{r}
-cfs.narc.geo@data %>%
+cfs.narc.ratios.by.year <- cfs.narc.geo@data %>%
   mutate(call.year = year(calldatetime)) %>%
-  filter(call.year != 2019) %>%
-  count(hmt.tier.2mid, call.year) %>%
-  left_join(tier.pop, by = "hmt.tier.2mid") %>%
+  filter(call.year != 2019,
+         !is.na(hmt.tier)) %>%
+  count(hmt.tier, call.year) %>%
+  left_join(tier.pop, by = "hmt.tier") %>%
   mutate(narc.call.ratio = round(1000 *n / tier.pop, 1)) %>%
   ungroup() %>%
   group_by(call.year) %>%
-  arrange(hmt.tier.2mid)
+  arrange(hmt.tier) %>%
+  ungroup() %>%
+  group_by(hmt.tier) %>%
+  mutate(narc.call.ratio.pct.chg = narc.call.ratio / first(narc.call.ratio) - 1)
+
+cfs.narc.ratios.by.year
 ```
+
+
+```{r fig.width = 7, fig.height = 4}
+cfs.narc.ratios.by.year %>%
+  filter(hmt.tier != "other") %>%
+  ggplot(aes(call.year, narc.call.ratio.pct.chg, color = hmt.tier)) +
+  geom_line(size = 0.75) +
+  theme_iteam_google_docs() +
+  theme(axis.title.x = element_blank()) +
+  scale_y_continuous(labels = scales::percent, limits = c(-.5, .5)) +
+  labs(title = "Changes in Narcotics 911 CFS by Housing Typology Tier\n2015 Base Year",
+       y = "% Change in Narcotics Calls Ratio from 2015") 
+  
+```
+

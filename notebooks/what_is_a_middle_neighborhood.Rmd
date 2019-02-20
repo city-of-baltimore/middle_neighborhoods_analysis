@@ -94,9 +94,9 @@ hmt@data <- hmt@data %>% mutate(
     med.inc.tier = 
     case_when(
       (hmt.tier != "other") & 
-        (Median_Household_Income.2016 > 1.25 * ami.2016) ~ "healthy",
+        (Median_Household_Income.2016 > 1.25 * City_Median_Household_Income.2016) ~ "healthy",
       (hmt.tier != "other") & 
-        (Median_Household_Income.2016 < 0.75 * ami.2016) ~ "distressed",
+        (Median_Household_Income.2016 < 0.75 * City_Median_Household_Income.2016) ~ "distressed",
       (hmt.tier == "other") ~ NA_character_,
       TRUE ~ "middle"
     )

@@ -31,7 +31,7 @@ load_block_group_data <- function(load.cache = T){
   library(here)
   if(load.cache == T){
     
-    dir <- paste0(here(), "/data/raw/hmt")
+    dir <- paste0(here(), "/data/processed/hmt")
     filename <- paste0(dir, "/hmt_join_acs.rds")
     
     # load existing cache or create it if it doesn't exist
@@ -166,6 +166,82 @@ get_911cfs_type <- function(cfs.type){
   
   
 }
+
+load_2018_service_requests <- function(load.cache = T){
+  
+  library(here)
+  if(load.cache == T){
+    
+    dir <- paste0(here(), "/data/processed/311")
+    filename <- paste0(dir, "/311_sr_2018.rds")
+    
+    # load existing cache or create it if it doesn't exist
+    sr <- tryCatch({
+      message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "Attempting to load cached data."))
+      message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "File at: ", filename)) 
+      cached.data <- readRDS(filename)
+    },
+    
+    error = function(cond){
+      
+      message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "Cache does not exist. Creating cache."))
+      server.data <- get_2018_service_requests_from_ob()
+      
+      if(file.exists(dir) == F){
+        message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "Directory does not exist. Creating directory.")) 
+        dir.create(dir)
+      }
+      
+      saveRDS(server.data, file = filename)
+      message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "Cache saved to ", filename)) 
+      return(server.data)
+    }
+    )
+  } else {
+    # load data directly from server 
+    message(paste0(Sys.time(), ": ", "Loading directly from Open Baltimore."))
+    server.data <- get_2018_service_requests_from_ob()
+  }
+  
+  message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "311 service request data succesfully loaded."))
+  return(sr)
+  
+}
+
+get_2018_service_requests_from_ob <- function(){
+  
+  library(RSocrata)
+  library(sp)
+  
+  sr.endpoint <- "https://data.baltimorecity.gov/resource/9agw-sxsr.json"
+  sr.query <- paste0(sr.endpoint, "?$where=date_trunc_y(createddate)='2018'")
+  
+  message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "Grabbing 311 data from Open Baltimore.")) 
+  
+  sr <- read.socrata(url = sr.query, app_token = VARS$SOCRATA_TOKEN) %>%
+    mutate(latitude = as.numeric(latitude),
+           longitude = as.numeric(longitude),
+           createddate = as.Date(createddate)) 
+  
+  message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "311 data retrieved; processing.")) 
+  
+  sr <- sr %>% filter(!is.na(longitude), !is.na(latitude))
+  
+  sr <- SpatialPointsDataFrame(
+    coords = sr %>% 
+      select(longitude, latitude) %>% 
+      as.matrix(),
+    data = sr,
+    proj4string = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
+  
+  proj4string(sr) <- CRS("+proj=longlat")
+  sr <- spTransform(sr, CRS("+init=epsg:4326"))
+  
+  message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "311 data processing complete.")) 
+  
+  return(sr)
+}
+
 
 
 unlist_lat_long <- function(df, colname){

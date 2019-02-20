@@ -1,4 +1,5 @@
-
+library(here)
+here <- here::here
 
 suppressMessages(library(tidyverse))
 suppressMessages(library(here))
@@ -7,8 +8,10 @@ suppressMessages(library(scales))
 
 VARS <- list()
 
+VARS$EMAIL <- Sys.getenv("EMAIL")
+
 # Initialize directories
-VARS$CODE <- here("code/")
+VARS$SRC <- here("src")
 VARS$RAW_DATA <- here("data/raw/")
 VARS$PROCESSED_DATA <- here("data/processed/")
 VARS$NOTEBOOKS <- here("notebooks/")
@@ -23,5 +26,10 @@ VARS$EGIS_SERVER_USER <- Sys.getenv("EGIS_SERVER_USERNAME")
 VARS$EGIS_SERVER_PWD <-  Sys.getenv("EGIS_SERVER_PWD")
 
 VARS$SQL_SERVER <- Sys.getenv("SQL_SERVER")
+
+# Socrata credentials
+VARS$SOCRATA_TOKEN <- Sys.getenv("SOCRATA_TOKEN")
+VARS$SOCRATA_SECRET <- Sys.getenv("SOCRATA_SECRET")
+VARS$SOCRATA_PWD <- Sys.getenv("SOCRATA_PWD")
 
 source(here("src", "01_helper_functions.R"))
