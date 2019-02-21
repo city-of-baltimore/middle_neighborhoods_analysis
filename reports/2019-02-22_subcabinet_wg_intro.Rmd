@@ -6,23 +6,26 @@ date: "Friday, February 22, 2019"
 css: iteam_pres.css
 output: 
   slidy_presentation:
-    toc: true
+    highlight: pygments
+    md_extensions: +raw_html
+    toc: yes
 ---
 
 ```{r setup, include = FALSE, echo = FALSE, message = FALSE, cache = TRUE}
 knitr::opts_chunk$set(echo = F, warning = F, message = F, include = T,
-                      fig.width = 10, fig.height = 5)
+                      fig.width = 8, fig.height = 5)
 
 ``` 
 
-```{r init, include = F}
+```{r init, include = F, echo = F}
 source("../src/00_initialize.R")
 
 library(leaflet)
 library(knitr)
+library(kableExtra)
 ```
 
-```{r get.data, cache = F, echo = F}
+```{r get.data, cache = T, echo = F, include = F}
 hmt <- load_block_group_data(load.cache = T)
 hoods <- get_neighborhood_boundaries()
 #sr <- get_2018_service_requests_from_ob()
@@ -38,27 +41,17 @@ ami.2016 <- 86700
 ```
 
 
-# Housing Market Typology 
+# Our Middle Neighborhoods (based on HMT)
 
-- Performed every few years by Reinvestment Fund
-- Uses 8 variables
-
-
-# The Housing Market Typologies
-
-# Our Middle Neighborhoods
-
-Breaking "middle" into "lower middle" (F, G, H) and "upper middle" (D, E) and including "healthy" and "distressed:
-
-```{r echo = F}
-#mid.hoods.hmt <- subset(hmt, hmt.tier %in% c("lower middle", "upper middle"))
+```{r echo = F, message = F}
+mid.hoods.hmt <- subset(hmt, hmt.tier %in% c("lower middle", "upper middle"))
 
 hmt.pal <- colorFactor(
   domain = hmt$hmt.tier,
   palette = c("gray65",
               "gray85",
               "#f0c650", 
-              NA,
+              "white",
               iteam.colors[1])
 )
 
@@ -80,7 +73,128 @@ leaflet() %>%
               color = "black",
               opacity = 0.5,
               fillOpacity = 0, 
-              label = ~hoods$label)
+              label = ~hoods$label) %>%
+  addLegend(data = hmt,
+            position = "bottomright",
+            pal = hmt.pal,
+            values = ~hmt$hmt.tier, 
+            title = "HMT Tier")
+```
+
+# Our Middle Neighborhoods (75% - 125% of city median income)
+
+```{r include = F}
+# HUD area median income for Baltimore-Columbia-Towson
+#ami.2016 <- 86700
+#ami.2018 <- 94900
+
+hmt@data <- hmt@data %>% mutate(
+    # assign healthy, middle, and distressed based on block group median income
+    med.inc.tier = 
+    case_when(
+      (hmt.tier != "other") & 
+        (Median_Household_Income.2016 > 1.25 * City_Median_Household_Income.2016) ~ "healthy",
+      (hmt.tier != "other") & 
+        (Median_Household_Income.2016 < 0.75 * City_Median_Household_Income.2016) ~ "distressed",
+      (hmt.tier == "other") ~ NA_character_,
+      TRUE ~ "middle"
+    )
+  )
+```
+
+
+```{r}
+mid.hoods.med.inc <- subset(hmt, med.inc.tier == "middle")
+
+leaflet() %>% 
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addPolygons(data = mid.hoods.med.inc, 
+              color = iteam.colors[3],
+              weight = 1,
+              #fillColor = ~pal(MVA17HrdCd),
+              fillColor = iteam.colors[3],
+              fillOpacity = .6,
+              #opacity = 0,
+              label = ~as.character(mid.hoods.med.inc$MVA17HrdCd)
+              ) %>%
+  #addGeoJSON(hoods, weight = 1, color = "black", fillOpacity = 0)
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~hoods$label) %>%
+    addLegend(data = hmt,
+            position = "bottomright",
+            colors =  c(iteam.colors[3]),
+            labels = "Middle (based on 25% - 75% City Median Income)",
+            title = "")
+```
+
+# Comparing the definitions
+
+<div align = "right" style="float: right;">
+
+```{r}
+leaflet() %>% 
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addPolygons(data = mid.hoods.med.inc, 
+              color = iteam.colors[3],
+              weight = 1,
+              #fillColor = ~pal(MVA17HrdCd),
+              fillColor = iteam.colors[3],
+              fillOpacity = .7,
+              #opacity = 0,
+              label = ~as.character(mid.hoods.med.inc$MVA17HrdCd)) %>%
+  addPolygons(data = mid.hoods.hmt, 
+              color = iteam.colors[1],
+              weight = 1,
+              #fillColor = ~pal(MVA17HrdCd),
+              fillColor = iteam.colors[1],
+              fillOpacity = .5,
+              #opacity = 0,
+              label = ~as.character(mid.hoods.hmt$MVA17HrdCd)) %>%
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~hoods$label) %>%
+  addLegend("bottomright",
+            colors = c(iteam.colors[1], iteam.colors[3]),
+            labels = c("HMT definition", "Median income definition"))
+```
+
+</div>
+
+```{r}
+hmt.summary <- hmt@data %>% 
+  mutate(hmt.tier = ifelse(hmt.tier %in% c("lower middle", "upper middle"), "middle", hmt.tier)) %>%
+  group_by(hmt.tier) %>%
+  summarise(n.block.groups.hmt = n(),
+            pop.hmt = sum(Population.2016)) %>%
+  mutate(pct.block.groups.hmt = percent(n.block.groups.hmt / sum(n.block.groups.hmt)),
+         pct.pop.hmt = percent(pop.hmt / sum(pop.hmt)))
+
+med.inc.summmary <- hmt@data %>% 
+  group_by(med.inc.tier) %>%
+  summarise(n.block.groups.med.inc = n(),
+            pop.med.inc = sum(Population.2016)) %>%
+  mutate(pct.block.groups.med.inc = percent(n.block.groups.med.inc / sum(n.block.groups.med.inc)),
+         pct.pop.med.inc = percent(pop.med.inc / sum(pop.med.inc)))
+
+left_join(hmt.summary, med.inc.summmary, by = c("hmt.tier" = "med.inc.tier")) %>%
+  rename(tier = "hmt.tier") %>%
+  filter(tier != "other") %>%
+  transmute(Tier = tier,
+            `Population (HMT)` = pop.hmt,
+            `% City Pop (HMT)` = pct.pop.hmt,
+            `Population (Median Income)` = pop.med.inc,
+            `% City Pop (Median Income)` = pct.pop.med.inc) %>%
+  kable() %>%
+  column_spec(c(1,2,3,4,5), width = "10em")
 ```
 
 # Income levels in our middle neighborhoods are well below area's
@@ -139,14 +253,12 @@ hmt@data %>%
     caption = paste0("tier based on 2017 HMT analysis; ",
                      "% homeowners 65 and over from 2012-2016 ACS data.")
   ) +
-  theme(plot.caption = element_text(hjust = 1, face = "plain")) +
+  theme(plot.caption = element_text(hjust = 1, face = "plain"),
+        legend.title = element_blank()) +
   scale_x_continuous(labels = percent)
 ```
 
-
-# Top 311 Service Request Types by Tier
-
-```{r echo = F}
+```{r echo = F, include = F}
 sr.norats <- subset(sr, srtype != "SW-Rat Rubout Proactive")
 
 all.sr.bg <- over(sr.norats, hmt)
@@ -177,7 +289,9 @@ leaflet() %>%
 
 # Total Service Requests per 1,000 Residents
 
-```{r echo = F}
+<div align = "right" style="float: right;">
+
+```{r echo = F, fig.width = 6}
 bins <- c(0, 100, 200, 500, 1000, 1500, 2000, Inf)
 pal <- colorBin("YlOrRd", domain = hmt$sr.ratio, bins = bins)
 
@@ -193,7 +307,27 @@ leaflet() %>%
 
 ```
 
+</div>
+
+
 ```{r echo = F}
+sr.by.hmt.tier <- hmt@data %>%
+  group_by(hmt.tier) %>%
+  summarise(total.pop = sum(Population.2016),
+            sr.count = sum(all.sr.count),
+            sr.ratio = round(1000 * sr.count / total.pop, 0)) %>%
+  arrange(desc(sr.ratio))
+
+sr.by.hmt.tier %>% 
+  rename("Population" = total.pop,
+         "SR Count" = sr.count,
+         "SR's per 1,000 Residents" = sr.ratio,
+         "HMT Tier" = hmt.tier) %>% 
+  kable() %>%
+  column_spec(4, width = "10em")
+```
+
+```{r echo = F, include = F}
 hmt@data %>%
   ggplot(aes(sr.ratio)) +
   geom_histogram() +
@@ -201,22 +335,10 @@ hmt@data %>%
   theme_iteam_google_docs()
 ```
 
-# Total Service Requests by HMT Tier
 
-```{r echo = F}
-sr.by.hmt.tier <- hmt@data %>%
-  group_by(hmt.tier) %>%
-  summarise(total.pop = sum(Population.2016),
-            sr.count = sum(all.sr.count),
-            sr.ratio = round(sr.count / total.pop, 2)) %>%
-  arrange(desc(sr.ratio))
+# Top Service Request Types by HMT Tier
 
-sr.by.hmt.tier %>% kable()
-```
-
-# Top Service Request Type by HMT Tier
-
-```{r echo = F, warning = F}
+```{r echo = F, warning = F, include = F}
 sr.norats@data %>% 
   filter(!is.na(hmt.tier)) %>%
   count(hmt.tier, srtype) %>% 
@@ -238,9 +360,17 @@ sr.norats@data %>%
          srtype = as.factor(srtype)) %>%
   left_join(sr.by.hmt.tier %>% select(hmt.tier, total.pop), by = "hmt.tier") %>%
   mutate(sr.ratio = round(1000 * n / total.pop, 1)) %>%
+  #filter(!is.na(sr.ratio)) %>%
   arrange(hmt.tier, desc(sr.ratio)) %>%
   group_by(hmt.tier) %>%
-  mutate(rank = row_number()) %>%
-  kable()
+  mutate(rank = row_number())  %>%
+  filter(rank %in% c(1, 2, 3)) %>% 
+  select(-n, -total.pop, -sr.ratio) %>%
+  spread(key = hmt.tier, value = srtype) %>%
+  select(rank, healthy, `upper middle`, `lower middle`, distressed, other) %>%
+  kable() %>%
+column_spec(column = c(3, 4), width = "10em")
+  
+  
 ```
 
