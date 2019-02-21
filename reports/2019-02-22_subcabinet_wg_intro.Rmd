@@ -103,7 +103,7 @@ hmt@data <- hmt@data %>% mutate(
 ```
 
 
-```{r}
+```{r echo = F}
 mid.hoods.med.inc <- subset(hmt, med.inc.tier == "middle")
 
 leaflet() %>% 
@@ -136,7 +136,7 @@ leaflet() %>%
 
 <div align = "right" style="float: right;">
 
-```{r}
+```{r echo = F}
 leaflet() %>% 
   setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
   addProviderTiles(providers$Stamen.TonerLite) %>%
@@ -169,7 +169,7 @@ leaflet() %>%
 
 </div>
 
-```{r}
+```{r echo = F}
 hmt.summary <- hmt@data %>% 
   mutate(hmt.tier = ifelse(hmt.tier %in% c("lower middle", "upper middle"), "middle", hmt.tier)) %>%
   group_by(hmt.tier) %>%
