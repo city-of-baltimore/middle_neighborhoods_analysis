@@ -5,11 +5,14 @@ author: "Justin Elszasz, Mayor's Office of Innovation"
 email: "justin.elszasz@baltimorecity.gov"
 date: "Friday, February 22, 2019"
 css: iteam_pres.css
+font-import: http://fonts.googleapis.com/css?family=Lato
+font-family: 'Oswald'
 output: 
   slidy_presentation:
     highlight: pygments
     md_extensions: +raw_html
     toc: yes
+    footer: "Mayor's Office of Innovation"
 ---
 
 ```{r setup, include = FALSE, echo = FALSE, message = FALSE, cache = TRUE}
@@ -82,7 +85,7 @@ leaflet() %>%
             title = "HMT Tier")
 ```
 
-# Our Middle Neighborhoods (75% - 125% of city median income)
+# Our middle neighborhoods (median household income 75%-125% of city median income)
 
 ```{r include = F}
 # HUD area median income for Baltimore-Columbia-Towson
@@ -99,6 +102,14 @@ hmt@data <- hmt@data %>% mutate(
         (Median_Household_Income.2016 < 0.75 * City_Median_Household_Income.2016) ~ "distressed",
       (hmt.tier == "other") ~ NA_character_,
       TRUE ~ "middle"
+    ),
+    affordability.tier = case_when(
+      (hmt.tier != "other") & 
+        (MSP1517eo <= 3 * 1.25 * City_Median_Household_Income.2016) &
+        (MSP1517eo >= 3 * 0.75 * City_Median_Household_Income.2016) ~ "middle",
+      hmt.tier == "other" ~ NA_character_,
+      TRUE ~ "not middle"
+      
     )
   )
 ```
@@ -133,14 +144,53 @@ leaflet() %>%
             title = "")
 ```
 
-# Comparing the definitions
+# Our middle neighborhoods (where middle income-earners could afford to live)
 
-<div align = "right" style="float: right; width: 40%">
+
+```{r echo = F, out.width="100%"}
+mid.hoods.affordability <- subset(hmt, affordability.tier == "middle")
+
+leaflet() %>% 
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addPolygons(data = mid.hoods.affordability, 
+              color = iteam.colors[3],
+              weight = 1,
+              #fillColor = ~pal(MVA17HrdCd),
+              fillColor = iteam.colors[4],
+              fillOpacity = .6,
+              #opacity = 0,
+              label = ~as.character(mid.hoods.affordability$MVA17HrdCd)
+              ) %>%
+  #addGeoJSON(hoods, weight = 1, color = "black", fillOpacity = 0)
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~hoods$label) %>%
+    addLegend(data = hmt,
+            position = "bottomright",
+            colors =  c(iteam.colors[4]),
+            labels = "Middle (based on affordability)",
+            title = "")
+```
+
+# Comparing the definitions
 
 ```{r echo = F, out.width = "100%"}
 leaflet() %>% 
   setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
   addProviderTiles(providers$Stamen.TonerLite) %>%
+  addPolygons(data = mid.hoods.affordability, 
+              color = iteam.colors[3],
+              weight = 1,
+              #fillColor = ~pal(MVA17HrdCd),
+              fillColor = iteam.colors[4],
+              fillOpacity = .6,
+              #opacity = 0,
+              label = ~as.character(mid.hoods.affordability$MVA17HrdCd)
+  ) %>%
   addPolygons(data = mid.hoods.med.inc, 
               color = iteam.colors[3],
               weight = 1,
@@ -164,13 +214,12 @@ leaflet() %>%
               fillOpacity = 0, 
               label = ~hoods$label) %>%
   addLegend("bottomright",
-            colors = c(iteam.colors[1], iteam.colors[3]),
-            labels = c("HMT definition", "Median income definition"))
+            colors = c(iteam.colors[1], iteam.colors[3], iteam.colors[4]),
+            labels = c("HMT definition", "Median income definition", "Affordability definition"))
 ```
 
-</div>
 
-<div align = "left" style="float: left; width: 50%">
+# Comparing the definitions
 
 ```{r echo = F, out.width="100%"}
 hmt.summary <- hmt@data %>% 
@@ -188,28 +237,66 @@ med.inc.summmary <- hmt@data %>%
   mutate(pct.block.groups.med.inc = percent(n.block.groups.med.inc / sum(n.block.groups.med.inc)),
          pct.pop.med.inc = percent(pop.med.inc / sum(pop.med.inc)))
 
+affordability.summmary <- hmt@data %>% 
+  group_by(affordability.tier) %>%
+  summarise(n.block.groups.affordability = n(),
+            pop.affordability = sum(Population.2016)) %>%
+  mutate(pct.block.groups.affordability = percent(n.block.groups.affordability / sum(n.block.groups.affordability)),
+         pct.pop.affordability = percent(pop.affordability / sum(pop.affordability)))
+
 left_join(hmt.summary, med.inc.summmary, by = c("hmt.tier" = "med.inc.tier")) %>%
+  left_join(affordability.summmary, by = c("hmt.tier" = "affordability.tier")) %>%
   rename(tier = "hmt.tier") %>%
   filter(tier != "other") %>%
   transmute(Tier = tier,
             `Population (HMT)` = pop.hmt,
             `% City Pop (HMT)` = pct.pop.hmt,
             `Population (Median Income)` = pop.med.inc,
-            `% City Pop (Median Income)` = pct.pop.med.inc) %>%
+            `% City Pop (Median Income)` = pct.pop.med.inc,
+            `Population (Affordability)` = pop.affordability,
+            `% City Pop (Affordability)` = pct.pop.affordability) %>%
   kable() %>%
-  column_spec(c(1,2,3,4,5), width = "10em")
+  column_spec(c(1:7), width = "10em")
 ```
 
-</div> 
-
-# Upper middle neighborhoods are overall the least segregated
+# Healthy block groups and lower middle block groups are similar in terms of percent owner-occupied 
 
 <div align = "center" style="float: center; width: 60%;">
 
 ```{r echo = F, out.width="100%"}
 hmt@data %>%
   filter(hmt.tier != "other") %>%
-  mutate(pct.nonwhite = 1 - White.2016) %>%
+  mutate(pct.nonwhite = AfricanAmerican.2016) %>%
+  # filter(!is.na(Median_Household_Income.2016),
+  #        Median_Household_Income.2016 > 0,
+  #        hmt.tier %in% c("lower middle", "upper middle")) %>% 
+  ggplot(aes(Percent_Owner.2016)) +
+  geom_freqpoly(aes(color = hmt.tier), stat = "density") +
+  theme_iteam_presentations() +
+  scale_x_continuous(labels = scales::percent, limits = c(-.1, 1.1)) +
+  labs(
+    title = paste0("Middle Neighborhood\nBlock Group % Owner-Occupied\n",
+                   "Distribution by HMT Market tier"),
+    subtitle = "",
+    x = "% Owner-Occupied",
+    y = "Density",
+    caption = paste0("tier based on 2017 HMT analysis; ",
+                     "median household incomes from 2012-2016 ACS data.")
+  ) +
+  theme(plot.caption = element_text(hjust = 1, face = "plain"),
+        legend.title = element_blank())
+```
+
+</div>
+
+# Neighborhood typologies are strongly correlated with race
+
+<div align = "center" style="float: center; width: 60%;">
+
+```{r echo = F, out.width="100%"}
+hmt@data %>%
+  filter(hmt.tier != "other") %>%
+  mutate(pct.nonwhite = AfricanAmerican.2016) %>%
   # filter(!is.na(Median_Household_Income.2016),
   #        Median_Household_Income.2016 > 0,
   #        hmt.tier %in% c("lower middle", "upper middle")) %>% 
@@ -218,10 +305,10 @@ hmt@data %>%
   theme_iteam_presentations() +
   scale_x_continuous(labels = scales::percent, limits = c(-.1, 1.1)) +
   labs(
-    title = paste0("Middle Neighborhood\nBlock Group % Non-White\n",
+    title = paste0("Middle Neighborhood\nBlock Group % African-American\n",
                    "Distribution by HMT Market tier"),
     subtitle = "",
-    x = "% Non-white",
+    x = "% African-American",
     y = "Density",
     caption = paste0("tier based on 2017 HMT analysis; ",
                      "median household incomes from 2012-2016 ACS data.")
