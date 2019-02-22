@@ -172,3 +172,71 @@ cfs.narc.ratios.by.year %>%
   
 ```
 
+```{r echo = F}
+cfs.narc.bg <- over(cfs.narc.geo, hmt)
+
+cfs.narc.geo@data <- bind_cols(cfs.narc.geo@data, cfs.narc.bg)
+
+cfs.narc.bg.counts <- as.data.frame(table(cfs.narc.bg$bg))
+
+hmt@data <- left_join(hmt@data, cfs.narc.bg.counts, by = c("bg" = "Var1")) 
+  
+hmt@data <- hmt@data %>%
+  rename(cfs.narc.count = Freq) %>%
+  mutate(cfs.narc.ratio = 1000 * cfs.narc.count / Population.2016)
+```
+
+```{r}
+hmt@data %>%
+  ggplot(aes(cfs.narc.ratio)) +
+  geom_histogram() +
+  theme_iteam_google_docs() +
+  xlim(c(-50, 1000))
+```
+
+
+```{r echo = F}
+bins <- c(0, 50, 100, 200, 300, 400, 500, 750, 1000, 1500, Inf)
+pal <- colorBin("YlOrRd", domain = hmt$cfs.narc.ratio, bins = bins)
+
+leaflet() %>%
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>% 
+  addPolygons(data = hmt, 
+              fillColor = ~pal(hmt$cfs.narc.ratio), 
+              color = iteam.colors[2], 
+              weight = 1, 
+              fillOpacity = .6,
+              label = ~as.character(round(hmt$cfs.narc.ratio, 0 ))) %>%
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~hoods$label)
+
+```
+
+
+
+```{r echo = F}
+bins <- c(0, 50, 100, 200, 300, 400, 500, 750, 1000, 1500, Inf)
+pal <- colorBin("YlOrRd", domain = hmt$cfs.narc.ratio, bins = bins)
+
+leaflet() %>%
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>% 
+  addPolygons(data = hmt, 
+              fillColor = ~pal(hmt$cfs.narc.ratio), 
+              color = iteam.colors[2], 
+              weight = 1, 
+              fillOpacity = .6,
+              label = ~as.character(round(hmt$cfs.narc.ratio, 0 ))) %>%
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~hoods$label)
+
+```

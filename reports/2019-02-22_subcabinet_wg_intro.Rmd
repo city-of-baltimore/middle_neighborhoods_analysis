@@ -17,7 +17,7 @@ knitr::opts_chunk$set(echo = F, warning = F, message = F, include = T,
 
 ``` 
 
-```{r init, include = F, echo = F}
+```{r init, include = F, echo = F, cache = T}
 source("../src/00_initialize.R")
 
 library(leaflet)
@@ -43,7 +43,7 @@ ami.2016 <- 86700
 
 # Our Middle Neighborhoods (based on HMT)
 
-```{r echo = F, message = F}
+```{r echo = F, message = F, out.width="100%"}
 mid.hoods.hmt <- subset(hmt, hmt.tier %in% c("lower middle", "upper middle"))
 
 hmt.pal <- colorFactor(
@@ -103,7 +103,7 @@ hmt@data <- hmt@data %>% mutate(
 ```
 
 
-```{r echo = F}
+```{r echo = F, out.width="100%"}
 mid.hoods.med.inc <- subset(hmt, med.inc.tier == "middle")
 
 leaflet() %>% 
@@ -134,9 +134,9 @@ leaflet() %>%
 
 # Comparing the definitions
 
-<div align = "right" style="float: right;">
+<div align = "right" style="float: right; width: 40%">
 
-```{r echo = F}
+```{r echo = F, out.width = "100%"}
 leaflet() %>% 
   setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
   addProviderTiles(providers$Stamen.TonerLite) %>%
@@ -169,7 +169,9 @@ leaflet() %>%
 
 </div>
 
-```{r echo = F}
+<div align = "left" style="float: left; width: 50%">
+
+```{r echo = F, out.width="100%"}
 hmt.summary <- hmt@data %>% 
   mutate(hmt.tier = ifelse(hmt.tier %in% c("lower middle", "upper middle"), "middle", hmt.tier)) %>%
   group_by(hmt.tier) %>%
@@ -197,10 +199,13 @@ left_join(hmt.summary, med.inc.summmary, by = c("hmt.tier" = "med.inc.tier")) %>
   column_spec(c(1,2,3,4,5), width = "10em")
 ```
 
+</div> 
+
 # Income levels in our middle neighborhoods are well below area's
 
+<div align = "right" style="float: right; width: 50%;">
 
-```{r echo = F}
+```{r echo = F, out.width="100%"}
 hmt@data %>% 
   filter(!is.na(Median_Household_Income.2016),
          Median_Household_Income.2016 > 0,
@@ -224,9 +229,11 @@ hmt@data %>%
   theme(plot.caption = element_text(hjust = 1, face = "plain"),
         legend.title = element_blank())
 ```
+</div>
 
 # Middle neighborhoods have more older homeowners
 
+<div align = "left" style="float: left; width: 40%;">
 
 ```{r echo = F}
 hmt@data %>%
@@ -236,10 +243,14 @@ hmt@data %>%
             med.pct.ho.over65 = percent(median(Percent_Homeowner_Over_65.2016))) %>%
   rename("Mean % Homeowners 65+" = mean.pct.ho.over65,
          "Median % Homeowners 65+" = med.pct.ho.over65) %>%
-  kable()
+  kable() %>%
+  column_spec(c(1,2,3), width = "20em")
 ```
+</div>
 
-```{r echo = F}
+<div align = "right" style="float: right; width: 50%;">
+
+```{r echo = F, out.width="100%"}
 hmt@data %>% 
   filter(hmt.tier != "other") %>% 
   ggplot(aes(Percent_Homeowner_Over_65.2016)) +
@@ -258,6 +269,8 @@ hmt@data %>%
   scale_x_continuous(labels = percent)
 ```
 
+</div>
+
 ```{r echo = F, include = F}
 sr.norats <- subset(sr, srtype != "SW-Rat Rubout Proactive")
 
@@ -275,40 +288,35 @@ hmt@data <- hmt@data %>%
 ```
 
 
-```{r echo = F, include = F}
-# quick visual verification
-
-map.points <- sr.norats[sample(1:length(sr.norats), 5000), ]
-
-leaflet() %>%
-  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
-  addProviderTiles(providers$Stamen.TonerLite) %>% 
-  addCircleMarkers(data = map.points, radius = 1)
-  
-```
 
 # Total Service Requests per 1,000 Residents
 
 <div align = "right" style="float: right;">
 
-```{r echo = F, fig.width = 6}
-bins <- c(0, 100, 200, 500, 1000, 1500, 2000, Inf)
+```{r echo = F, fig.width = 5}
+bins <- c(0, 250, 500, 750, 1000, 2000, Inf)
 pal <- colorBin("YlOrRd", domain = hmt$sr.ratio, bins = bins)
 
 leaflet() %>%
   setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
   addProviderTiles(providers$Stamen.TonerLite) %>% 
-  addPolygons(data = hmt, 
+  addPolygons(data = subset(hmt, hmt$sr.ratio <= 3000), 
               fillColor = ~pal(hmt$sr.ratio), 
               color = iteam.colors[2], 
               weight = 1, 
               fillOpacity = 1,
-              label = ~as.character(round(hmt$sr.ratio, 0 )))
-
+              label = ~as.character(round(hmt$sr.ratio, 0 ))) %>%
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~hoods$label)
 ```
 
 </div>
 
+<div align = "left" style="float: left; width: 40%;">
 
 ```{r echo = F}
 sr.by.hmt.tier <- hmt@data %>%
@@ -326,6 +334,7 @@ sr.by.hmt.tier %>%
   kable() %>%
   column_spec(4, width = "10em")
 ```
+</div>
 
 ```{r echo = F, include = F}
 hmt@data %>%
@@ -352,7 +361,7 @@ sr.norats@data %>%
   kable()
 ```
 
-```{r echo = F, warning = F}
+```{r echo = F, warning = F, out.width="100%"}
 sr.norats@data %>% 
   filter(!is.na(hmt.tier)) %>%
   count(hmt.tier, srtype) %>% 
@@ -364,13 +373,135 @@ sr.norats@data %>%
   arrange(hmt.tier, desc(sr.ratio)) %>%
   group_by(hmt.tier) %>%
   mutate(rank = row_number())  %>%
-  filter(rank %in% c(1, 2, 3)) %>% 
+  filter(rank %in% c(1, 2, 3, 4, 5)) %>% 
   select(-n, -total.pop, -sr.ratio) %>%
   spread(key = hmt.tier, value = srtype) %>%
   select(rank, healthy, `upper middle`, `lower middle`, distressed, other) %>%
   kable() %>%
-column_spec(column = c(3, 4), width = "10em")
+  column_spec(column = c(3, 4), width = "10em")
   
   
 ```
 
+# There are drug hot spots in middle neighborhoods
+
+```{r narc, cache = T, include = F}
+library(RSocrata)
+library(lubridate)
+cfs.narc <- read.socrata("https://data.baltimorecity.gov/resource/m8g9-abgb.json?description=NARCOTICSOutside")
+
+cfs.narc <- cfs.narc %>% 
+  unlist_lat_long("location.coordinates")
+
+cfs.narc.geo <- cfs.narc %>% filter(!is.na(long))
+  
+cfs.narc.geo <- SpatialPointsDataFrame(
+  cfs.narc.geo %>% select(long, lat), cfs.narc.geo,
+  proj4string = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
+
+cfs.narc.geo <- spTransform(cfs.narc.geo, CRSobj = CRS("+init=epsg:4326 +proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
+```
+
+```{r include = F}
+cfs.narc.hmt <- over(cfs.narc.geo, hmt)
+
+cfs.narc.geo@data <- bind_cols(cfs.narc.geo@data, cfs.narc.hmt)
+```
+
+```{r include = F}
+cfs.narc.bg <- over(cfs.narc.geo, hmt)
+
+cfs.narc.geo@data <- bind_cols(cfs.narc.geo@data, cfs.narc.bg)
+
+cfs.narc.bg.counts <- as.data.frame(table(cfs.narc.bg$bg))
+
+hmt@data <- left_join(hmt@data, cfs.narc.bg.counts, by = c("bg" = "Var1")) 
+  
+hmt@data <- hmt@data %>%
+  rename(cfs.narc.count = Freq) %>%
+  mutate(cfs.narc.ratio = 1000 * cfs.narc.count / Population.2016)
+```
+
+<div align = "left" style="float: left; width: 40%;">
+
+```{r echo = F, out.width = "100%"}
+tier.pop <- hmt@data %>% group_by(hmt.tier) %>% summarise(tier.pop = sum(Population.2016))
+
+cfs.narc.geo@data %>%
+  mutate(call.year = year(calldatetime)) %>%
+  filter(call.year != 2019, !is.na(hmt.tier)) %>%
+  count(hmt.tier) %>%
+  left_join(tier.pop, by = "hmt.tier") %>%
+  ungroup() %>% 
+  mutate(annual.narc.call.per1000 = round(1000 * n / tier.pop / 4, 1),
+         pct.pop = percent(tier.pop / sum(tier.pop, na.rm = T)),
+         pct.calls = percent(n / sum(n))) %>%
+  arrange(desc(annual.narc.call.per1000)) %>%
+  transmute(Tier = hmt.tier,
+            Calls = n,
+            Population = tier.pop,
+            `Annual Narc CFS per 1,000 Residents` = annual.narc.call.per1000,
+            `% City Population` = pct.pop,
+            `% Narc CFS` = pct.calls
+            ) %>%
+  kable() %>%
+  column_spec(column = c(1,2,3,4,5,6), width = "10em")
+```
+
+```{r include = F}
+cfs.narc.ratios.by.year <- cfs.narc.geo@data %>%
+  mutate(call.year = year(calldatetime)) %>%
+  filter(call.year != 2019,
+         !is.na(hmt.tier)) %>%
+  count(hmt.tier, call.year) %>%
+  left_join(tier.pop, by = "hmt.tier") %>%
+  mutate(narc.call.ratio = round(1000 *n / tier.pop, 1)) %>%
+  ungroup() %>%
+  group_by(call.year) %>%
+  arrange(hmt.tier) %>%
+  ungroup() %>%
+  group_by(hmt.tier) %>%
+  mutate(narc.call.ratio.pct.chg = narc.call.ratio / first(narc.call.ratio) - 1)
+
+cfs.narc.ratios.by.year
+```
+</div>
+
+<div align = "right" style="float: right; width: 50%;">
+
+```{r echo = F, out.width = "100%", height = 4}
+cfs.narc.ratios.by.year %>%
+  filter(hmt.tier != "other") %>%
+  ggplot(aes(call.year, narc.call.ratio.pct.chg, color = hmt.tier)) +
+  geom_line(size = 0.75) +
+  theme_iteam_presentations() +
+  theme(axis.title.x = element_blank(),
+        legend.title = element_blank()) +
+  scale_y_continuous(labels = scales::percent, limits = c(-.5, .5)) +
+  labs(title = "Changes in Narcotics 911 CFS\nby Housing Typology Tier\n2015 Base Year",
+       y = "% Change in Narcotics Calls Ratio from 2015") 
+```
+</div>
+
+# Narcotics 911 Calls for Service Hotspots
+
+```{r echo = F, out.width = "100%", warning = F}
+bins <- c(0, 50, 100, 200, 300, 400, 500, 750, 1000, 1500, Inf)
+pal <- colorBin("YlOrRd", domain = hmt$cfs.narc.ratio, bins = bins)
+
+leaflet() %>%
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>% 
+  addPolygons(data = hmt, 
+              fillColor = ~pal(hmt$cfs.narc.ratio), 
+              color = iteam.colors[2], 
+              weight = 1, 
+              fillOpacity = .6) %>%
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~hoods$label)
+
+```
