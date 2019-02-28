@@ -1,0 +1,51 @@
+---
+title: "Homeownership Rates in Middle Neighborhoods"
+author: "Justin Elszasz, Mayor's Office of Innovation"
+email: "justin.elszasz@baltimorecity.gov"
+date: "Thursday, February 28, 2019"
+output:
+  html_notebook:
+    code_folding: hide
+    fig_height: 5
+    fig_width: 10
+    toc: yes
+    toc_depth: 2
+---
+
+```{r setup, include = FALSE, echo = FALSE, message = FALSE, cache = TRUE}
+knitr::opts_chunk$set(echo = FALSE, warning = F, message = F, include = T,
+                                 fig.width = 10, fig.height = 5)
+```
+ 
+```{r include = F}
+source("../src/00_initialize.R")
+library(leaflet)
+hmt <- load_block_group_data(load.cache = T)
+hoods <- get_neighborhood_boundaries()
+```
+
+```{r out.width="100%", fig.width=8}
+mid.hoods <- subset(hmt, hmt.tier %in% c("lower middle", "upper middle"))
+
+bins <- c(seq(0, 1, 0.2))
+pal <- colorBin("YlOrRd", domain = mid.hoods$Percent_Owner.2016, bins = bins)
+
+leaflet() %>%
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>% 
+  addPolygons(data = mid.hoods, 
+              fillColor = ~pal(mid.hoods$Percent_Owner.2016), 
+              color = iteam.colors[2], 
+              weight = 1, 
+              fillOpacity = .6,
+              label = ~as.character(round(mid.hoods$Percent_Owner.2016, 2))) %>%
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~hoods$label)
+
+```
+
+
