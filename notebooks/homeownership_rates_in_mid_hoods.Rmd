@@ -12,6 +12,9 @@ output:
     toc_depth: 2
 ---
 
+The map below shows the percent of homes owner-occupied based on U.S. Census American Community Survey data for 2012-2016.
+
+
 ```{r setup, include = FALSE, echo = FALSE, message = FALSE, cache = TRUE}
 knitr::opts_chunk$set(echo = FALSE, warning = F, message = F, include = T,
                                  fig.width = 10, fig.height = 5)
@@ -44,7 +47,12 @@ leaflet() %>%
               color = "black",
               opacity = 0.5,
               fillOpacity = 0, 
-              label = ~hoods$label)
+              label = ~hoods$label) %>%
+  addLegend(data = mid.hoods,
+            position = "bottomright",
+            pal = pal,
+            values = ~mid.hoods$Percent_Owner.2016,
+            title = "Percent Owner Occupied")
 
 ```
 
