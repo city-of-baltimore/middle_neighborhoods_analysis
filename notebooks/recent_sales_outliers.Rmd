@@ -154,27 +154,6 @@ result.sales <- nrow(sales.hood.98th)
 
 (If this yield isn't high enough we can bump it down to the 95th percentile.)
 
-```{r}
-sales.hood.95th$long <- lapply(sales.hood.95th$location.coordinates, function(x) x[1]) %>% unlist()
-
-sales.hood.95th$lat <- lapply(sales.hood.95th$location.coordinates, function(x) x[2]) %>% unlist()
-```
-
-```{r}
-sales.hood.95th.geo <- sales.hood.95th %>% filter(!is.na(long))
-  
-sales.hood.95th.geo <- SpatialPointsDataFrame(
-  sales.hood.95th.geo %>% select(long, lat), 
-  sales.hood.95th.geo,
-  proj4string = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
-
-sales.hood.95th.geo <- 
-  spTransform(
-    sales.hood.95th.geo, 
-    CRSobj = CRS("+init=epsg:4326 +proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
-    )
-
-```
 
 ```{r}
 sales.hood.98th$long <- lapply(sales.hood.98th$location.coordinates, function(x) x[1]) %>% unlist()
