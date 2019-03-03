@@ -1,0 +1,243 @@
+---
+title: "Recent Sales Outliers"
+author: "Justin Elszasz, Mayor's Office of Innovation"
+email: "justin.elszasz@baltimorecity.gov"
+date: "Thursday, February 28, 2019"
+output:
+  html_notebook:
+    code_folding: hide
+    fig_height: 5
+    fig_width: 10
+    toc: yes
+    toc_depth: 2
+---
+
+```{r setup, include = FALSE, echo = FALSE, message = FALSE, cache = TRUE}
+knitr::opts_chunk$set(echo = FALSE, warning = F, message = F, include = T,
+                                 fig.width = 10, fig.height = 5)
+```
+
+
+```{r}
+source("../src/00_initialize.R")
+sales <- load_sales_data(load.cache = T)
+
+library(RSocrata)
+library(sp)
+library(leaflet)
+
+real.prop.url <- "https://data.baltimorecity.gov/resource/6act-qzuy.json"
+real.prop <- read.socrata(real.prop.url, app_token = VARS$SOCRATA_TOKEN)
+
+hoods <- get_neighborhood_boundaries()
+```
+
+First need to join up the real property data ([Open Baltimore]([http://data.baltimorecity.gov/Financial/Real-Property-Taxes/27w9-urtvto)) the sales data (provided by Steve, and with **deed dates from January 1, 2010 through October 2018**) so we have a neighborhood for as many sales as we can.
+
+```{r}
+sales <- sales %>% rename(sales.block = Block, sales.lot = Lot)
+real.prop <- real.prop %>% rename(real.block = block, real.lot = lot)
+```
+
+```{r}
+real.prop <- real.prop %>%
+  mutate(real.block.clean = gsub("^0+", "", real.block),
+         real.lot.clean = gsub("^0+", "", real.lot))
+
+sales <- sales %>%
+  mutate(sales.block.clean = gsub("^0+", "", sales.block),
+         sales.lot.clean = gsub("^0+", "", sales.lot))
+```
+
+```{r}
+sales <- sales %>%
+  left_join(real.prop, 
+            by = c("sales.block.clean" = "real.block.clean",
+                   "sales.lot.clean" = "real.lot.clean")
+            )
+```
+
+```{r}
+sales %>% count(is.na(real.block), is.na(real.lot))
+```
+
+1,153 sales didn't match to a block-lot in the real property table, which means that the block-lot jointly was not in the real prop table. 
+
+Also, there are about 16,000 properties in the real prop table that don't have a neighborhood. 
+
+```{r}
+real.prop %>% count(is.na(neighborhood))
+```
+
+So after joining we end up with 9,428 sales that don't have a neighborhood.
+
+```{r}
+sales %>% count(!is.na(neighborhood))
+```
+
+The real property table also gives if it is principal residence or not, so we'll also filter for the sales that are for principal residences.
+
+```{r}
+sales %>% count(rescode)
+```
+
+
+# Neighborhood Summary Table, 2015-2017
+
+```{r}
+meet.criteria <- sales %>%
+  filter(year(deed.date) %in% c(2015, 2016, 2017),
+         !is.na(neighborhood),
+         `How Conveyed` == 1,
+         !grepl("NOT", rescode)) %>%
+  nrow
+```
+
+We have `r meet.criteria` samples to work with that are in 2015-2017, have a neighborhood, were an arms-length sale, and are the principal residence.
+
+```{r}
+sales.summary.15_17.by.hood <- sales %>%
+  filter(year(deed.date) %in% c(2015, 2016, 2017),
+         !is.na(neighborhood),
+         `How Conveyed` == 1,
+         !grepl("NOT", rescode)) %>%
+  group_by(neighborhood) %>%
+  summarise(hood.n = n(),
+            hood.mean = mean(`Sales Price`),
+            hood.median = median(`Sales Price`),
+            hood.std = sqrt(sum((`Sales Price`-hood.mean)^2/(hood.n-1))),
+            hood.95th = quantile(`Sales Price`, probs = .95),
+            hood.98th = quantile(`Sales Price`, probs = .98))
+
+sales.summary.15_17.by.hood  
+```
+
+Which neighborhoods have less than 20 sales meeting the criteria?
+
+```{r}
+sales.summary.15_17.by.hood %>%
+  filter(hood.n < 20)
+```
+
+84 neighborhoods have less than 20 sales meeting the criteria. We'll exclude them going forward so we have a reasonable sample size.
+
+```{r}
+# Join the summaries to the neighborhood boundaries
+hoods@data <- hoods@data %>% 
+  left_join(sales.summary.15_17.by.hood,
+            by = c("label" = "neighborhood"))
+```
+
+# Criteria & Results
+
+```{r}
+sales.hood.98th <- sales %>%
+  left_join(sales.summary.15_17.by.hood,
+            by = c("neighborhood" = "neighborhood")) %>%
+  filter(year(deed.date) == 2018,
+         hood.n >= 20,
+         `Sales Price` >= hood.98th,
+         `How Conveyed` == 1,
+         !grepl("NOT", rescode)) %>%
+  arrange(neighborhood)
+
+result.sales <- nrow(sales.hood.98th)
+```
+
+**There are `r result.sales` sales that meet the following criteria:**
+
+- Deed date was between January 1, 2018 and October 5, 2018
+- Arms-length sale
+- Principal residence
+- Neighborhood had at least 20 sales
+- 98th percentile for sales prices for their neighborhood.
+
+(If this yield isn't high enough we can bump it down to the 95th percentile.)
+
+```{r}
+sales.hood.95th$long <- lapply(sales.hood.95th$location.coordinates, function(x) x[1]) %>% unlist()
+
+sales.hood.95th$lat <- lapply(sales.hood.95th$location.coordinates, function(x) x[2]) %>% unlist()
+```
+
+```{r}
+sales.hood.95th.geo <- sales.hood.95th %>% filter(!is.na(long))
+  
+sales.hood.95th.geo <- SpatialPointsDataFrame(
+  sales.hood.95th.geo %>% select(long, lat), 
+  sales.hood.95th.geo,
+  proj4string = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
+
+sales.hood.95th.geo <- 
+  spTransform(
+    sales.hood.95th.geo, 
+    CRSobj = CRS("+init=epsg:4326 +proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+    )
+
+```
+
+```{r}
+sales.hood.98th$long <- lapply(sales.hood.98th$location.coordinates, function(x) x[1]) %>% unlist()
+
+sales.hood.98th$lat <- lapply(sales.hood.98th$location.coordinates, function(x) x[2]) %>% unlist()
+```
+
+
+```{r}
+sales.hood.98th.geo <- sales.hood.98th %>% filter(!is.na(long))
+  
+sales.hood.98th.geo <- SpatialPointsDataFrame(
+  sales.hood.98th.geo %>% select(long, lat), 
+  sales.hood.98th.geo,
+  proj4string = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
+
+sales.hood.98th.geo <- 
+  spTransform(
+    sales.hood.98th.geo, 
+    CRSobj = CRS("+init=epsg:4326 +proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+    )
+
+```
+
+# Map
+
+```{r}
+library(htmltools)
+
+hoods.labels <- paste0(
+  hoods$label,
+  "<br>Median Sales, 2015-2017: ", as.character(hoods$hood.median)
+  
+)
+
+sale.labels <- paste0(
+  sales.hood.98th.geo$`House #`, " ",
+  sales.hood.98th.geo$`Street Name`, " ",
+  sales.hood.98th.geo$Suffix, 
+  "<br>Sale Price in 2018: ", 
+  as.character(sales.hood.98th.geo$`Sales Price`),
+  "<br>New Owner: ", sales.hood.98th.geo$new.owner
+)
+
+
+leaflet() %>%
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>% 
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~lapply(hoods.labels, HTML)) %>%
+  addCircleMarkers(data = sales.hood.98th.geo, 
+                   radius = 2,
+                   label = ~lapply(sale.labels, HTML))
+```
+
+# Full list
+
+```{r}
+sales.hood.98th 
+```
+
+

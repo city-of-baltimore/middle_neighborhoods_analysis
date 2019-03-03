@@ -26,6 +26,75 @@ get_hmt_data <- function(){
 }
 
 
+clean_sales_spreadsheets <- function(){
+  
+  library(here)
+  library(readxl)
+  library(lubridate)
+  
+  filename.2017 <- paste0(VARS$RAW_DATA, "/sales/City Sales Data Jan 1 2017 through September 2018.xlsx")
+  filename.2010 <- paste0(VARS$RAW_DATA, "/sales/Sales Data 2010 - Sept 2017.xlsx")
+  
+  sales.2017 <- read_excel(filename.2017, skip = 2, col_names = T)
+  sales.2010 <- read_excel(filename.2010, skip = 2, col_names = T)
+  
+  
+  sales <- bind_rows(sales.2010, sales.2017)
+  
+  sales <- sales[!duplicated(sales %>% select(Block, Lot, `Date Sale Entered in Land Records`, Liber, Folio)), ]
+  
+  sales <- sales %>% mutate(
+    deed.date = ymd(`Deed Date`),
+    sale.enter.date = ymd(`Date Sale Entered in Land Records`),
+    zip.five = substr(Zipcode, 1, 5),
+    new.owner = substring(`New Owner`, first = 2),
+    blocklot = paste0(Block, Lot))
+  
+  return(sales)
+}
+
+load_sales_data <- function(load.cache = T){
+  
+  
+  library(here)
+  if(load.cache == T){
+    
+    dir <- paste0(VARS$PROCESSED_DATA, "/sales")
+    filename <- paste0(dir, "/sales.rds")
+    
+    # load existing cache or create it if it doesn't exist
+    sales <- tryCatch({
+      message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "Attempting to load cached data."))
+      message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "File at: ", filename)) 
+      cached.data <- readRDS(filename)
+    },
+    
+    error = function(cond){
+      
+      message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "Cache does not exist. Creating cache."))
+      
+      sales <- clean_sales_spreadsheets()
+      
+      if(file.exists(dir) == F){
+        message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "Directory does not exist. Creating directory.")) 
+        dir.create(dir)
+      }
+      
+      saveRDS(sales, file = filename)
+      message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "Cache saved to ", filename)) 
+      return(sales)
+    }
+    )
+  } else {
+    # load data directly from server 
+    message(paste0(Sys.time(), ": ", "Loading directly from spreadsheets (no cache created or loaded)."))
+    sales <- clean_sales_spreadsheets()
+  }
+  
+  message(paste0(format(Sys.time(), format="%H:%M:%S"), ": ", "Sales data succesfully loaded."))
+  return(sales)
+}
+
 load_block_group_data <- function(load.cache = T){
   
   library(here)
@@ -244,17 +313,19 @@ get_2018_service_requests_from_ob <- function(){
 
 
 
-unlist_lat_long <- function(df, colname){
+unlist_lat_long <- function(df, colname, long.position){
+  
+  lat.position = ifelse(long.position == 1, 2, 1)
   
   df$long <- sapply(
     df[, colname], 
-    FUN = function(x){toString(x[[1]][[1]])}) %>%
+    FUN = function(x){toString(x[[long.position]][[1]])}) %>%
     unlist() %>% 
     as.numeric()
   
   df$lat <- sapply(
     df[, colname], 
-    FUN = function(x){toString(x[[2]][[1]])}) %>%
+    FUN = function(x){toString(x[[lat.position]][[1]])}) %>%
     unlist() %>% 
     as.numeric()
   

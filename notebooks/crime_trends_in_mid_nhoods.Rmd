@@ -101,6 +101,8 @@ leaflet() %>%
 cfs.narc.hmt <- over(cfs.narc.geo, hmt)
 
 cfs.narc.geo@data <- bind_cols(cfs.narc.geo@data, cfs.narc.hmt)
+
+cfs.narc.geo@data %>% head
 ```
 
 ```{r}
@@ -177,13 +179,28 @@ cfs.narc.bg <- over(cfs.narc.geo, hmt)
 
 cfs.narc.geo@data <- bind_cols(cfs.narc.geo@data, cfs.narc.bg)
 
-cfs.narc.bg.counts <- as.data.frame(table(cfs.narc.bg$bg))
+cfs.narc.bg.counts <- as.data.frame(table(year(cfs.narc.geo$calldatetime), cfs.narc.geo$bg)) %>% 
+  spread(key = Var1, value = Freq) %>%
+  rename(cfs.narc.2015 = "2015",
+         cfs.narc.2016 = "2016",
+         cfs.narc.2017 = "2017",
+         cfs.narc.2018 = "2018",
+         cfs.narc.2019 = "2019",
+         bg = "Var2") %>%
+  select(-cfs.narc.2019) %>%
+  mutate(cfs.narc.4yr = cfs.narc.2015 + cfs.narc.2016 + cfs.narc.2017 + cfs.narc.2018)
 
-hmt@data <- left_join(hmt@data, cfs.narc.bg.counts, by = c("bg" = "Var1")) 
+hmt@data <- left_join(hmt@data, cfs.narc.bg.counts, by = "bg")
   
-hmt@data <- hmt@data %>%
-  rename(cfs.narc.count = Freq) %>%
-  mutate(cfs.narc.ratio = 1000 * cfs.narc.count / Population.2016)
+hmt@data <- hmt@data %>% 
+  mutate(cfs.narc.ratio = 1000 * cfs.narc.4yr / Population.2016 / 4, # 4 years
+         cfs.narc.ratio.2015 = 1000 * cfs.narc.2015 / Population.2016,
+         cfs.narc.ratio.2016 = 1000 * cfs.narc.2016 / Population.2016,
+         cfs.narc.ratio.2017 = 1000 * cfs.narc.2017 / Population.2016,
+         cfs.narc.ratio.2018 = 1000 * cfs.narc.2018 / Population.2016,
+         cfs.narc.ratio.pct.chg.15_18 = (cfs.narc.ratio.2018 - cfs.narc.ratio.2015) / cfs.narc.ratio.2015)
+
+hmt@data %>% select(bg, cfs.narc.ratio, cfs.narc.ratio.2015) %>% head
 ```
 
 ```{r}
@@ -191,12 +208,12 @@ hmt@data %>%
   ggplot(aes(cfs.narc.ratio)) +
   geom_histogram() +
   theme_iteam_google_docs() +
-  xlim(c(-50, 1000))
+  xlim(c(-50, 300))
 ```
 
 
 ```{r echo = F}
-bins <- c(0, 50, 100, 200, 300, 400, 500, 750, 1000, 1500, Inf)
+bins <- c(seq(0, 250, 20), Inf)
 pal <- colorBin("YlOrRd", domain = hmt$cfs.narc.ratio, bins = bins)
 
 leaflet() %>%
@@ -207,7 +224,7 @@ leaflet() %>%
               color = iteam.colors[2], 
               weight = 1, 
               fillOpacity = .6,
-              label = ~as.character(round(hmt$cfs.narc.ratio, 0 ))) %>%
+              label = ~as.character(round(hmt$cfs.narc.ratio, 2))) %>%
   addPolygons(data = hoods, 
               weight = 2, 
               color = "black",
@@ -215,28 +232,88 @@ leaflet() %>%
               fillOpacity = 0, 
               label = ~hoods$label)
 
+```
+
+# 2015 Narcotics CFS per 1,000 Residents
+
+```{r echo = F}
+leaflet() %>%
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>% 
+  addPolygons(data = hmt, 
+              fillColor = ~pal(hmt$cfs.narc.ratio.2015), 
+              color = iteam.colors[2], 
+              weight = 1, 
+              fillOpacity = .6,
+              label = ~as.character(round(hmt$cfs.narc.ratio.2015, 2))) %>%
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~hoods$label)
+
+```
+
+# 2018 Narcotics CFS per 1,000 Residents
+
+```{r echo = F}
+leaflet() %>%
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>% 
+  addPolygons(data = hmt, 
+              fillColor = ~pal(hmt$cfs.narc.ratio.2018), 
+              color = iteam.colors[2], 
+              weight = 1, 
+              fillOpacity = .6,
+              label = ~as.character(round(hmt$cfs.narc.ratio.2018, 2))) %>%
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~hoods$label)
+
+```
+
+```{r}
+hmt@data %>% ggplot(aes(cfs.narc.ratio.pct.chg.15_18)) + geom_histogram() + xlim(c(-3,10))
 ```
 
 
 
 ```{r echo = F}
-bins <- c(0, 50, 100, 200, 300, 400, 500, 750, 1000, 1500, Inf)
-pal <- colorBin("YlOrRd", domain = hmt$cfs.narc.ratio, bins = bins)
+mid.big.change <- subset(hmt, 
+                         hmt.tier %in% c("lower middle", "upper middle"))
+
+bins <- c(-Inf, seq(-2, 2, .2), Inf)
+pal <- colorBin("RdBu", domain = mid.big.change$cfs.narc.ratio.pct.chg.15_18, bins = bins, reverse = T)
+
+
 
 leaflet() %>%
   setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
   addProviderTiles(providers$Stamen.TonerLite) %>% 
-  addPolygons(data = hmt, 
-              fillColor = ~pal(hmt$cfs.narc.ratio), 
+  addPolygons(data = mid.big.change, 
+              fillColor = ~pal(mid.big.change$cfs.narc.ratio.pct.chg.15_18), 
               color = iteam.colors[2], 
               weight = 1, 
               fillOpacity = .6,
-              label = ~as.character(round(hmt$cfs.narc.ratio, 0 ))) %>%
+              label = ~as.character(round(mid.big.change$cfs.narc.ratio.pct.chg.15_18, 2))) %>%
   addPolygons(data = hoods, 
               weight = 2, 
               color = "black",
               opacity = 0.5,
               fillOpacity = 0, 
-              label = ~hoods$label)
+              label = ~hoods$label) 
 
 ```
+
+```{r}
+mid.big.change@data %>% 
+  ggplot(aes(cfs.narc.ratio.pct.chg.15_18)) + 
+  geom_histogram(bins = 7 0) +
+  theme_iteam_presentations() +
+  xlim(c(-1, 10))
+```
+
