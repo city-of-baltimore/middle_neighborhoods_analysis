@@ -30,6 +30,8 @@ real.prop.url <- "https://data.baltimorecity.gov/resource/6act-qzuy.json"
 real.prop <- read.socrata(real.prop.url, app_token = VARS$SOCRATA_TOKEN)
 
 hoods <- get_neighborhood_boundaries()
+hmt <- load_block_group_data(load.cache = T)
+hmt.hood <- read_excel("../data/raw/hmt/HMT by Neighborhood 2017.xlsx")
 ```
 
 First need to join up the real property data ([Open Baltimore]([http://data.baltimorecity.gov/Financial/Real-Property-Taxes/27w9-urtvto)) the sales data (provided by Steve, and with **deed dates from January 1, 2010 through October 2018**) so we have a neighborhood for as many sales as we can.
@@ -81,6 +83,22 @@ The real property table also gives if it is principal residence or not, so we'll
 sales %>% count(rescode)
 ```
 
+Distribution of city-wide 2018 sales prices:
+
+```{r}
+sales %>%
+  filter(year(deed.date) == 2018) %>%
+  ggplot(aes(`Sales Price`)) +
+  geom_histogram() +
+  theme_iteam_google_docs() +
+  xlim(c(0, 500000))
+```
+
+```{r}
+quantile(sales$`Sales Price`, 0.85)
+```
+ 
+
 
 # Neighborhood Summary Table, 2015-2017
 
@@ -107,7 +125,8 @@ sales.summary.15_17.by.hood <- sales %>%
             hood.median = median(`Sales Price`),
             hood.std = sqrt(sum((`Sales Price`-hood.mean)^2/(hood.n-1))),
             hood.95th = quantile(`Sales Price`, probs = .95),
-            hood.98th = quantile(`Sales Price`, probs = .98))
+            hood.98th = quantile(`Sales Price`, probs = .98),
+            hood.99th = quantile(`Sales Price`, probs = .99))
 
 sales.summary.15_17.by.hood  
 ```
@@ -128,7 +147,9 @@ hoods@data <- hoods@data %>%
             by = c("label" = "neighborhood"))
 ```
 
-# Criteria & Results
+# 98th Percentile
+
+## Criteria & Results
 
 ```{r}
 sales.hood.98th <- sales %>%
@@ -178,7 +199,7 @@ sales.hood.98th.geo <-
 
 ```
 
-# Map
+## Map
 
 ```{r}
 library(htmltools)
@@ -213,10 +234,183 @@ leaflet() %>%
                    label = ~lapply(sale.labels, HTML))
 ```
 
-# Full list
+## Full list
 
 ```{r}
 sales.hood.98th 
 ```
 
+# Detect jumps
+
+```{r}
+#look for temporal jumps in prices
+```
+
+# 99th Percentile
+
+## Criteria & Results
+
+```{r}
+sales.hood.99th <- sales %>%
+  left_join(sales.summary.15_17.by.hood,
+            by = c("neighborhood" = "neighborhood")) %>%
+  filter(year(deed.date) == 2018,
+         hood.n >= 20,
+         `Sales Price` >= hood.99th,
+         `How Conveyed` == 1,
+         !grepl("NOT", rescode)) %>%
+  arrange(neighborhood)
+
+result.sales <- nrow(sales.hood.99th)
+```
+
+**There are `r result.sales` sales that meet the following criteria:**
+
+- Deed date was between January 1, 2018 and October 5, 2018
+- Arms-length sale
+- Principal residence
+- Neighborhood had at least 20 sales
+- 99th percentile for sales prices for their neighborhood.
+
+(If this yield isn't high enough we can bump it down to the 95th percentile.)
+
+
+```{r}
+sales.hood.99th$long <- lapply(sales.hood.99th$location.coordinates, function(x) x[1]) %>% unlist()
+
+sales.hood.99th$lat <- lapply(sales.hood.99th$location.coordinates, function(x) x[2]) %>% unlist()
+```
+
+
+```{r}
+sales.hood.99th.geo <- sales.hood.99th %>% filter(!is.na(long))
+  
+sales.hood.99th.geo <- SpatialPointsDataFrame(
+  sales.hood.99th.geo %>% select(long, lat), 
+  sales.hood.99th.geo,
+  proj4string = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
+
+sales.hood.99th.geo <- 
+  spTransform(
+    sales.hood.99th.geo, 
+    CRSobj = CRS("+init=epsg:4326 +proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+    )
+
+```
+
+## Map
+
+```{r}
+library(htmltools)
+
+hoods.labels <- paste0(
+  hoods$label,
+  "<br>Median Sales, 2015-2017: ", as.character(hoods$hood.median)
+  
+)
+
+sale.labels <- paste0(
+  sales.hood.99th.geo$`House #`, " ",
+  sales.hood.99th.geo$`Street Name`, " ",
+  sales.hood.99th.geo$Suffix, 
+  "<br>Sale Price in 2018: ", 
+  as.character(sales.hood.99th.geo$`Sales Price`),
+  "<br>New Owner: ", sales.hood.99th.geo$new.owner
+)
+
+
+leaflet() %>%
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>% 
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~lapply(hoods.labels, HTML)) %>%
+  addCircleMarkers(data = sales.hood.99th.geo, 
+                   radius = 2,
+                   label = ~lapply(sale.labels, HTML))
+```
+
+```{r}
+emily.list <- c("4011 BARRINGTON",
+                "DORCHESTER",
+                "2319 MONTICELLO")
+
+sales.hood.98th.geo@data %>% 
+  filter(grepl(paste(emily.list, collapse="|"), propertyaddress))
+```
+
+# In Middle Neighborhood, 99th Percentile for Neighborhood, Over $250k
+
+The following criteria are used below:
+
+- Deed date was between January 1, 2018 and October 5, 2018
+- Arms-length sale
+- Principal residence
+- Neighborhood had at least 20 sales
+- 99th percentile for sales prices for their neighborhood.
+- Sale price over $250,000
+
+
+```{r}
+mid.hoods <- hmt.hood %>% filter(`Predominant Code Ignoring Non-Residential` %in% c("D", "E", "F", "G", "H"))
+
+sales.99th.mid.hood <- subset(sales.hood.99th.geo, tolower(neighborhood) %in% tolower(mid.hoods$Neighborhood))
+```
+
+
+```{r}
+
+mid.hoods.geo <- subset(hoods, 
+                        tolower(label) %in% tolower(mid.hoods$Neighborhood))
+
+sales.99th.mid.hood.over.250k <- subset(sales.99th.mid.hood,
+                                        `Sales Price` > 250000)
+
+mid.hoods.labels <- paste0(
+  mid.hoods.geo$label,
+  "<br>Median Sales, 2015-2017: ", as.character(mid.hoods.geo$hood.median)
+  
+)
+
+sale.labels <- paste0(
+  sales.99th.mid.hood.over.250k$`House #`, " ",
+  sales.99th.mid.hood.over.250k$`Street Name`, " ",
+  sales.99th.mid.hood.over.250k$Suffix, 
+  "<br>Sale Price in 2018: ", 
+  as.character(sales.99th.mid.hood.over.250k$`Sales Price`),
+  "<br>New Owner: ", sales.99th.mid.hood.over.250k$new.owner
+)
+
+
+leaflet() %>%
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>% 
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~lapply(hoods.labels, HTML)) %>%
+  addPolygons(data = mid.hoods.geo, 
+              weight = 2, 
+              #color = "black",
+              opacity = 0.0,
+              fillOpacity = .2,
+              fillColor = iteam.colors[3],
+              label = ~lapply(mid.hoods.labels, HTML)) %>%
+  addCircleMarkers(data = sales.99th.mid.hood.over.250k, 
+                   color = iteam.colors[1],
+                   opacity = 1,
+                   radius = 2,
+                   label = ~lapply(sale.labels, HTML))
+```
+
+## Full List
+
+```{r}
+sales.99th.mid.hood.over.250k
+```
 
