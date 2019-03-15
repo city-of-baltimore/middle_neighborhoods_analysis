@@ -17,7 +17,7 @@ library(tidyverse)
 library(lubridate)
 library(ggiteam)
 
-source("../code/00_initialize.R")
+source("../src/00_initialize.R")
 ```
 
 ```{r}

@@ -22,6 +22,7 @@ knitr::opts_chunk$set(echo = FALSE, warning = F, message = F, include = T,
 source("../src/00_initialize.R")
 sales <- load_sales_data(load.cache = T)
 
+library(readxl)
 library(RSocrata)
 library(sp)
 library(leaflet)
@@ -32,6 +33,17 @@ real.prop <- read.socrata(real.prop.url, app_token = VARS$SOCRATA_TOKEN)
 hoods <- get_neighborhood_boundaries()
 hmt <- load_block_group_data(load.cache = T)
 hmt.hood <- read_excel("../data/raw/hmt/HMT by Neighborhood 2017.xlsx")
+
+conn.gis <- odbcDriverConnect(
+  paste0(
+    'driver={ODBC Driver 13 for SQL Server};',
+    'server=', VARS$EGIS_SERVER, 
+    ';uid=', VARS$EGIS_SERVER_USER,
+    ';pwd=',VARS$EGIS_SERVER_PWD, 
+    ';database=housing;trusted_connection=No')
+)
+
+permits <- sqlFetch(conn.gis, "housing.tbl_Permit")
 ```
 
 First need to join up the real property data ([Open Baltimore]([http://data.baltimorecity.gov/Financial/Real-Property-Taxes/27w9-urtvto)) the sales data (provided by Steve, and with **deed dates from January 1, 2010 through October 2018**) so we have a neighborhood for as many sales as we can.
@@ -98,7 +110,19 @@ sales %>%
 quantile(sales$`Sales Price`, 0.85)
 ```
  
+# Bring in permit data
 
+```{r}
+permits %>% glimpse()
+```
+
+```{r}
+permits %>% count(csm_status)
+```
+
+```{r}
+permits %>% count(csm_type_work)
+```
 
 # Neighborhood Summary Table, 2015-2017
 
@@ -342,7 +366,7 @@ sales.hood.98th.geo@data %>%
   filter(grepl(paste(emily.list, collapse="|"), propertyaddress))
 ```
 
-# In Middle Neighborhood, 99th Percentile for Neighborhood, Over $250k
+# In Middle Neighborhood, 99th Percentile for Neighborhood, Over $250k, Over $10k Permit Activity
 
 The following criteria are used below:
 
@@ -352,12 +376,53 @@ The following criteria are used below:
 - Neighborhood had at least 20 sales
 - 99th percentile for sales prices for their neighborhood.
 - Sale price over $250,000
+- Permits issued between 2017-2018
+- Total permit value at least $10,000
 
+```{r}
+permits.recent <- permits %>% 
+  filter(csm_issued_date >= "2017-01-01") %>%
+  mutate(permit.block.clean = gsub("^0+", "", prc_block_no),
+         permit.lot.clean = gsub("^0+", "", prc_lot))
+
+permits.recent.summary <- permits.recent %>%
+  group_by(permit.block.clean, permit.lot.clean) %>%
+  summarise(permit.count = n(),
+            permit.total.value = sum(csm_cost, na.rm = T))
+```
 
 ```{r}
 mid.hoods <- hmt.hood %>% filter(`Predominant Code Ignoring Non-Residential` %in% c("D", "E", "F", "G", "H"))
 
 sales.99th.mid.hood <- subset(sales.hood.99th.geo, tolower(neighborhood) %in% tolower(mid.hoods$Neighborhood))
+
+sales.99th.mid.hood.over.250k <- subset(sales.99th.mid.hood,
+                                        `Sales Price` > 250000)
+```
+
+```{r}
+sales.99th.mid.hood.over.250k@data %>% nrow
+```
+
+
+```{r}
+sales.99th.mid.hood.over.250k@data <- sales.99th.mid.hood.over.250k@data %>%
+  left_join(permits.recent.summary, 
+            by = c("sales.block.clean" = "permit.block.clean",
+                   "sales.lot.clean" = "permit.lot.clean"))
+```
+
+Further filter for permit value totals over $10,000.
+
+```{r}
+sales.99th.mid.hood.over.250k.10k.permit <- subset(sales.99th.mid.hood.over.250k, permit.total.value >= 10000)
+                                                   
+```
+
+Results in 27 properties.
+
+```{r}
+sales.99th.mid.hood.over.250k.10k.permit@data %>% nrow
 ```
 
 
@@ -366,8 +431,7 @@ sales.99th.mid.hood <- subset(sales.hood.99th.geo, tolower(neighborhood) %in% to
 mid.hoods.geo <- subset(hoods, 
                         tolower(label) %in% tolower(mid.hoods$Neighborhood))
 
-sales.99th.mid.hood.over.250k <- subset(sales.99th.mid.hood,
-                                        `Sales Price` > 250000)
+
 
 mid.hoods.labels <- paste0(
   mid.hoods.geo$label,
@@ -376,12 +440,14 @@ mid.hoods.labels <- paste0(
 )
 
 sale.labels <- paste0(
-  sales.99th.mid.hood.over.250k$`House #`, " ",
-  sales.99th.mid.hood.over.250k$`Street Name`, " ",
-  sales.99th.mid.hood.over.250k$Suffix, 
+  sales.99th.mid.hood.over.250k.10k.permit$`House #`, " ",
+  sales.99th.mid.hood.over.250k.10k.permit$`Street Name`, " ",
+  sales.99th.mid.hood.over.250k.10k.permit$Suffix, 
   "<br>Sale Price in 2018: ", 
-  as.character(sales.99th.mid.hood.over.250k$`Sales Price`),
-  "<br>New Owner: ", sales.99th.mid.hood.over.250k$new.owner
+  as.character(sales.99th.mid.hood.over.250k.10k.permit$`Sales Price`),
+  "<br>New Owner: ", sales.99th.mid.hood.over.250k.10k.permit$new.owner,
+  "<br>Permits Issued from 2017-2018: ", sales.99th.mid.hood.over.250k.10k.permit$permit.count,
+  "<br>Total Permit Value from 2017-2018: ", sales.99th.mid.hood.over.250k.10k.permit$permit.total.value
 )
 
 
@@ -390,6 +456,7 @@ leaflet() %>%
   addProviderTiles(providers$Stamen.TonerLite) %>% 
   addPolygons(data = hoods, 
               weight = 2, 
+              
               color = "black",
               opacity = 0.5,
               fillOpacity = 0, 
@@ -401,7 +468,7 @@ leaflet() %>%
               fillOpacity = .2,
               fillColor = iteam.colors[3],
               label = ~lapply(mid.hoods.labels, HTML)) %>%
-  addCircleMarkers(data = sales.99th.mid.hood.over.250k, 
+  addCircleMarkers(data = sales.99th.mid.hood.over.250k.10k.permit, 
                    color = iteam.colors[1],
                    opacity = 1,
                    radius = 2,
@@ -411,6 +478,8 @@ leaflet() %>%
 ## Full List
 
 ```{r}
-sales.99th.mid.hood.over.250k
+sales.99th.mid.hood.over.250k.10k.permit@data
 ```
+
+
 
