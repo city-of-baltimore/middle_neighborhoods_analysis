@@ -426,7 +426,7 @@ sales.99th.mid.hood.over.250k.10k.permit@data %>% nrow
 ```
 
 
-```{r}
+```{r out.width="100%", width = 8}
 
 mid.hoods.geo <- subset(hoods, 
                         tolower(label) %in% tolower(mid.hoods$Neighborhood))
