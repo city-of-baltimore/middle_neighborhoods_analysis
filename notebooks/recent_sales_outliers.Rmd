@@ -14,7 +14,8 @@ output:
 
 ```{r setup, include = FALSE, echo = FALSE, message = FALSE, cache = TRUE}
 knitr::opts_chunk$set(echo = FALSE, warning = F, message = F, include = T,
-                                 fig.width = 10, fig.height = 5)
+                      fig.width = 10, fig.height = 5, 
+                      out.width = "100%", out.height = "100%")
 ```
 
 
@@ -49,6 +50,13 @@ permits <- sqlFetch(conn.gis, "housing.tbl_Permit")
 
 mris.recent <- read_excel("../data/raw/sales/Nov 2018 - Feb 2019 sales for Justin.xlsx")
 ```
+
+```{r}
+# join HMT hood labels to hood boundaries
+
+hoods@data <- hoods@data %>% left_join(hmt.hood, by = c("label" = "Neighborhood"))
+```
+
 
 First need to join up the real property data ([Open Baltimore]([http://data.baltimorecity.gov/Financial/Real-Property-Taxes/27w9-urtvto)) the sales data (provided by Steve, and with **deed dates from January 1, 2010 through October 2018**) so we have a neighborhood for as many sales as we can.
 
@@ -114,11 +122,7 @@ sales %>%
 quantile(sales$`Sales Price`, 0.85)
 ```
  
-# Bring in permit data
-
-```{r}
-permits %>% glimpse()
-```
+## Include Permits 
 
 ```{r}
 permits %>% count(csm_status)
@@ -235,6 +239,7 @@ library(htmltools)
 
 hoods.labels <- paste0(
   hoods$label,
+  "<br>2017 Housing Market Typology: ", hoods$`Predominant Code Ignoring Non-Residential`,
   "<br>Median Sales, 2015-2017: ", as.character(hoods$hood.median)
   
 )
@@ -327,16 +332,7 @@ sales.hood.99th.geo <-
 
 ```
 
-## Map
-
 ```{r}
-
-
-hoods.labels <- paste0(
-  hoods$label,
-  "<br>Median Sales, 2015-2017: ", as.character(hoods$hood.median)
-  
-)
 
 sale.labels <- paste0(
   sales.hood.99th.geo$`House #`, " ",
@@ -440,6 +436,7 @@ mid.hoods.geo <- subset(hoods,
 
 mid.hoods.labels <- paste0(
   mid.hoods.geo$label,
+  "<br>2017 Housing Market Typology: ", mid.hoods.geo$`Predominant Code Ignoring Non-Residential`,
   "<br>Median Sales, 2015-2017: ", as.character(mid.hoods.geo$hood.median)
   
 )
@@ -481,7 +478,6 @@ leaflet() %>%
                    label = ~lapply(sale.labels, HTML))
 ```
 
-## Full List
 
 ```{r}
 sales.99th.mid.hood.over.250k.10k.permit@data
@@ -494,12 +490,10 @@ library(ggmap)
 register_google(Sys.getenv("GOOGLE_GEO_KEY"))
 ```
 
-```{r}
-julie.list <- read_excel("../data/raw/sales/Nov 2018 - Feb 2019 sales for Justin.xlsx", sheet = 2)
-```
+### List that Julie & Justin found during dashboard search
 
 ```{r}
-julie.list %>% head
+julie.list <- read_excel("../data/raw/sales/Nov 2018 - Feb 2019 sales for Justin.xlsx", sheet = 2)
 ```
 
 ```{r}
@@ -510,13 +504,6 @@ julie.list.geocoded <- julie.list %>%
 julie.list.geocoded
 
 ```
-
-
-```{r}
-mris.recent %>% glimpse()
-```
-
-
 
 ```{r}
 filename <- "../data/processed/MRIS_outliers_geocoded.rds"
@@ -536,28 +523,32 @@ if (file.exists(filename) == F){
   
 }
 
-load(filename)
+mris.recent.outliers <- readRDS(filename)
+
+mris.recent.outliers.reno <- mris.recent.outliers %>% filter(!is.na(Year_Renovated))
 ```
 
 ```{r}
 mris.sale.labels <- paste0(
   "Analysis: MRIS (Nov 18 - Feb 19)<br>",
-  mris.recent.outliers$Address,
+  mris.recent.outliers.reno$Address,
+  "<br>Close Date: ", mris.recent.outliers.reno$Close_Date,
   "<br>Sale Price in 2018: ", 
-  as.character(mris.recent.outliers$Close_Price),
-  "<br>Recent Renovation: ", mris.recent.outliers$Year_Renovated
+  as.character(mris.recent.outliers.reno$Close_Price),
+  "<br>Recent Renovation: ", mris.recent.outliers.reno$Year_Renovated
 )
 
 julie.list.labels <- paste0(
   "Julie/Justin List<br>",
   julie.list.geocoded$Address,
+  "<br>Close Date: ", julie.list.geocoded$Close_Date,
   "<br>Sale Price in 2018: ", 
-  as.character(julie.list$Close_Price),
-  "<br>Recent Renovation: ", julie.list$Year_Renovated
+  as.character(julie.list.geocoded$Close_Price),
+  "<br>Recent Renovation: ", julie.list.geocoded$Year_Renovated
 )
 
 
-leaflet() %>%
+leaflet(width = "100%") %>%
   setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
   addProviderTiles(providers$Stamen.TonerLite) %>% 
   addPolygons(data = hoods, 
@@ -578,7 +569,7 @@ color = iteam.colors[3],
                    opacity = 1,
                    radius = 2,
                    label = ~lapply(julie.list.labels, HTML)) %>%
-  addCircleMarkers(data = mris.recent.outliers,
+  addCircleMarkers(data = mris.recent.outliers.reno,
 
                    color = "red",
                    opacity = 1,
@@ -591,10 +582,35 @@ color = iteam.colors[3],
                    label = ~lapply(sale.labels, HTML)) %>%
   addLegend(position = "bottomright",
             colors = c(iteam.colors[3], "red", iteam.colors[1]),
-           labels = c("asdf", "mve", "wev"))
+           labels = c("Justin/Julie LB Dashboard Search", 
+                      "MRIS Recent (Nov 18 - Feb 19) + Recent Reno", 
+                      "SDAT (2018 thru Oct) + 10k Permit"),
+           opacity = 1)
 
 
 ```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
