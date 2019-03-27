@@ -136,6 +136,25 @@ notices %>%
 ```
 
 
+```{r}
+notices %>% 
+  mutate(notice.year = year(DateNotice)) %>%
+  count(Status, notice.year) %>%
+  ggplot(aes(notice.year, n)) +
+  geom_col(aes(fill = Status)) +
+  theme_iteam_presentations() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank())
+```
+
+```{r}
+notices %>% filter(BlockLot == "2951D065 ")
+```
+```{r}
+View(notices)
+```
+
+
 
 # Vacant Building Notices
 
@@ -153,6 +172,38 @@ vbn %>%
             avg_age = mean(today() - DateNotice),
             med_age = median(today() - DateNotice))
 ```
+
+```{r}
+vbn %>% 
+  #filter(VBN_Status %in% c("New_Open", "New_Closed")) %>%
+  mutate(year.issued = year(DateNotice)) %>%
+  count(year.issued, VBN_Status) %>%
+  ggplot(aes(year.issued, n)) +
+  geom_col(aes(fill = VBN_Status)) +
+  theme_iteam_presentations()
+```
+
+```{r}
+vbn %>% 
+  filter(VBN_Status == "Old_Open  ") %>%
+  View
+```
+
+
+```{r}
+vbn %>%
+  count(BlockLot) %>%
+  arrange(desc(n)) %>%
+  filter(n > 1)
+```
+
+```{r}
+vbn %>% 
+  filter(BlockLot == "2951D065 ") %>%
+  arrange(DateNotice)
+```
+
+
 
 # Work Orders
 
@@ -230,8 +281,13 @@ sr.vacant %>% summarise(latest = max(`Created Date`))
 # Housing Inspections
 
 ```{r}
-insp %>% tail(100) %>% glimpse
+insp %>%  glimpse
 ```
+
+```{r}
+insp %>% count(InspType)
+```
+
 
 ```{r}
 insp %>% count(InspStatus)
@@ -246,6 +302,24 @@ insp %>% count(NameInspAction) %>% arrange(desc(n))
 ```{r}
 insp %>% select() %>% tail(30)
 ```
+
+
+```{r}
+View(insp)
+```
+
+```{r}
+insp %>% count(BlockLot == " ")
+```
+
+
+```{r}
+insp %>% 
+  filter(BlockLot == "2951D065") %>%
+  arrange(DateNotice)
+```
+
+# Sales
 
 ```{r}
 library(readxl)
@@ -304,6 +378,8 @@ sales %>%
   ungroup() %>%
   count(n > 1)
 ```
+
+
 ```{r}
 sales %>%
   filter(`Sales Price` < 1000000) %>%

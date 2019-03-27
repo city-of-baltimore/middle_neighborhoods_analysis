@@ -26,6 +26,8 @@ library(readxl)
 library(RSocrata)
 library(sp)
 library(leaflet)
+library(RODBC)
+library(htmltools)
 
 real.prop.url <- "https://data.baltimorecity.gov/resource/6act-qzuy.json"
 real.prop <- read.socrata(real.prop.url, app_token = VARS$SOCRATA_TOKEN)
@@ -44,6 +46,8 @@ conn.gis <- odbcDriverConnect(
 )
 
 permits <- sqlFetch(conn.gis, "housing.tbl_Permit")
+
+mris.recent <- read_excel("../data/raw/sales/Nov 2018 - Feb 2019 sales for Justin.xlsx")
 ```
 
 First need to join up the real property data ([Open Baltimore]([http://data.baltimorecity.gov/Financial/Real-Property-Taxes/27w9-urtvto)) the sales data (provided by Steve, and with **deed dates from January 1, 2010 through October 2018**) so we have a neighborhood for as many sales as we can.
@@ -170,6 +174,7 @@ hoods@data <- hoods@data %>%
   left_join(sales.summary.15_17.by.hood,
             by = c("label" = "neighborhood"))
 ```
+
 
 # 98th Percentile
 
@@ -325,7 +330,7 @@ sales.hood.99th.geo <-
 ## Map
 
 ```{r}
-library(htmltools)
+
 
 hoods.labels <- paste0(
   hoods$label,
@@ -440,6 +445,7 @@ mid.hoods.labels <- paste0(
 )
 
 sale.labels <- paste0(
+  "Analysis: SDAT (through October 18)<br>",
   sales.99th.mid.hood.over.250k.10k.permit$`House #`, " ",
   sales.99th.mid.hood.over.250k.10k.permit$`Street Name`, " ",
   sales.99th.mid.hood.over.250k.10k.permit$Suffix, 
@@ -480,6 +486,117 @@ leaflet() %>%
 ```{r}
 sales.99th.mid.hood.over.250k.10k.permit@data
 ```
+
+# MRIS data Nov 2018 - February 2019
+
+```{r}
+library(ggmap)
+register_google(Sys.getenv("GOOGLE_GEO_KEY"))
+```
+
+```{r}
+julie.list <- read_excel("../data/raw/sales/Nov 2018 - Feb 2019 sales for Justin.xlsx", sheet = 2)
+```
+
+```{r}
+julie.list %>% head
+```
+
+```{r}
+julie.list.geocoded <- julie.list %>%
+  mutate(full.address = paste0(Address, ", Baltimore, MD, ", Zip_Code)) %>%
+  mutate_geocode(full.address)
+
+julie.list.geocoded
+
+```
+
+
+```{r}
+mris.recent %>% glimpse()
+```
+
+
+
+```{r}
+filename <- "../data/processed/MRIS_outliers_geocoded.rds"
+
+if (file.exists(filename) == F){
+  
+  mris.recent.outliers <- mris.recent %>%
+    left_join(sales.summary.15_17.by.hood,
+              by = c("Neighborhood" = "neighborhood")) %>%
+    filter(hood.n >= 20,
+           Close_Price >= hood.99th) %>%
+    arrange(Neighborhood) %>%
+    mutate(full.address = paste0(Address, ", Baltimore, MD, ", Zip_Code)) %>%
+    mutate_geocode(full.address)
+  
+  saveRDS(mris.recent.outliers, filename)
+  
+}
+
+load(filename)
+```
+
+```{r}
+mris.sale.labels <- paste0(
+  "Analysis: MRIS (Nov 18 - Feb 19)<br>",
+  mris.recent.outliers$Address,
+  "<br>Sale Price in 2018: ", 
+  as.character(mris.recent.outliers$Close_Price),
+  "<br>Recent Renovation: ", mris.recent.outliers$Year_Renovated
+)
+
+julie.list.labels <- paste0(
+  "Julie/Justin List<br>",
+  julie.list.geocoded$Address,
+  "<br>Sale Price in 2018: ", 
+  as.character(julie.list$Close_Price),
+  "<br>Recent Renovation: ", julie.list$Year_Renovated
+)
+
+
+leaflet() %>%
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>% 
+  addPolygons(data = hoods, 
+              weight = 2, 
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~lapply(hoods.labels, HTML)) %>%
+  addPolygons(data = mid.hoods.geo, 
+              weight = 2, 
+              #color = "black",
+              opacity = 0.0,
+              fillOpacity = .2,
+              fillColor = iteam.colors[3],
+              label = ~lapply(mid.hoods.labels, HTML)) %>%
+      addCircleMarkers(data = julie.list.geocoded,
+color = iteam.colors[3],
+                   opacity = 1,
+                   radius = 2,
+                   label = ~lapply(julie.list.labels, HTML)) %>%
+  addCircleMarkers(data = mris.recent.outliers,
+
+                   color = "red",
+                   opacity = 1,
+                   radius = 2,
+                   label = ~lapply(mris.sale.labels, HTML)) %>%
+  addCircleMarkers(data = sales.99th.mid.hood.over.250k.10k.permit, 
+                   color = iteam.colors[1],
+                   opacity = 1,
+                   radius = 2,
+                   label = ~lapply(sale.labels, HTML)) %>%
+  addLegend(position = "bottomright",
+            colors = c(iteam.colors[3], "red", iteam.colors[1]),
+           labels = c("asdf", "mve", "wev"))
+
+
+```
+
+
 
 
 

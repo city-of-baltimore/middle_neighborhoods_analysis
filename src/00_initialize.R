@@ -33,4 +33,7 @@ VARS$SOCRATA_TOKEN <- Sys.getenv("SOCRATA_TOKEN")
 VARS$SOCRATA_SECRET <- Sys.getenv("SOCRATA_SECRET")
 VARS$SOCRATA_PWD <- Sys.getenv("SOCRATA_PWD")
 
+# Google geocoding
+VARS$GOOGLE_GEO_KEY <- Sys.getenv("GOOGLE_GEO_KEY")
+
 source(here("src", "01_helper_functions.R"))

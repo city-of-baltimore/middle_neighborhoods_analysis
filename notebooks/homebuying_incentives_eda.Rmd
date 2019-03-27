@@ -1,0 +1,108 @@
+---
+title: ""
+author: "Justin Elszasz, Mayor's Office of Innovation"
+email: "justin.elszasz@baltimorecity.gov"
+date: "Monday, March 25, 2019"
+output:
+  html_notebook:
+    code_folding: hide
+    fig_height: 5
+    fig_width: 10
+    toc: yes
+    toc_depth: 2
+---
+
+```{r setup, include = FALSE, echo = FALSE, message = FALSE, cache = TRUE}
+knitr::opts_chunk$set(echo = FALSE, warning = F, message = F, include = T,
+                                 fig.width = 10, fig.height = 5)
+```
+
+
+```{r}
+library(ggmap)
+library(leaflet)
+source("../src/00_initialize.R")
+```
+
+```{r}
+register_google(VARS$GOOGLE_GEO_KEY)
+```
+
+
+```{r}
+hoods <- get_neighborhood_boundaries()
+```
+
+
+```{r}
+cdbg16 <- read_excel("../data/raw/homebuying_incentives/CDBG 16.xlsx",
+                   skip = 2)
+cdbg17 <- read_excel("../data/raw/homebuying_incentives/CDBG 17.xlsx",
+                   skip = 2)
+cdbg18 <- read_excel("../data/raw/homebuying_incentives/CDBG 18.xls",
+                   skip = 2)
+```
+
+```{r}
+data.frame(cdbg16 = colnames(cdbg16),
+           cdbg17 = colnames(cdbg17),
+           cdbg18 = colnames(cdbg18))
+```
+
+```{r}
+cdbg <- cdbg16 %>% 
+  bind_rows(cdbg17) %>%
+  bind_rows(cdbg18)
+```
+
+Lots of cleaning to do on Neighborhood, maybe just geocode and reassign?
+
+```{r}
+cdbg %>% count(Neighborhood) %>% arrange(Neighborhood)
+```
+
+```{r}
+cdbg <- cdbg %>%
+  mutate(full.address = paste0(`House Num`, " ", 
+                               Street, " ", `Street Type`, 
+                               ", Baltimore, MD ", Zip)) %>%
+  mutate_geocode(full.address)
+```
+
+```{r}
+geocode("3729 roland ave baltimore md 21211")
+```
+
+```{r}
+leaflet() %>%
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>% 
+  addPolygons(data = hoods,
+              fillOpacity = 0,
+              color = iteam.colors[2],
+              weight = 2) %>%
+  addCircleMarkers(data = cdbg,
+                   radius = 1,
+                   color = "red")
+  
+```
+
+```{r}
+cdbg.geo <- cdbg
+coordinates(cdbg.geo) <- c("lon", "lat")
+
+
+```
+
+```{r}
+over(cdbg.geo, hoods)
+```
+
+```{r}
+
+```
+
+
+
+
+
