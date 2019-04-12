@@ -1,0 +1,281 @@
+---
+title: "Homebuying Incentive and Weatherization Program Analysis"
+subtitle: "Department of Housing and Community Development, City of Baltimore"
+author: "Justin Elszasz, Mayor's Office of Innovation"
+runtime: shiny
+output: 
+  html_notebook:
+    code_folding: hide
+    fig_height: 5
+    fig_width: 10
+    toc: yes
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, message = F)
+```
+
+```{r}
+library(readxl)
+library(ggmap)
+library(leaflet)
+library(htmltools)
+library(RSocrata)
+library(shiny)
+library(knitr)
+source("../src/00_initialize.R")
+```
+
+```{r load.data, cache = T, warning = F, echo = F}
+incen <- read_csv("../data/processed/homebuying_incentives/homebuying_incentive_programs.csv", na = c("NA"))
+
+hoods <- get_neighborhood_boundaries()
+hmt.by.hood <- read_excel("../data/raw/hmt/HMT by Neighborhood 2017.xlsx") %>%
+  transmute(neighborhood = Neighborhood,
+            predominant.code = `Predominant Code Ignoring Non-Residential`)
+sales <- load_sales_data(load.cache = T)
+
+#real.prop.url <- "https://data.baltimorecity.gov/resource/6act-qzuy.json"
+#real.prop <- read.socrata(real.prop.url, app_token = VARS$SOCRATA_TOKEN)
+
+#saveRDS(real.prop, "data/processed/real_prop.Rds")
+real.prop <- read_rds("../data/processed/real_prop.Rds")
+```
+
+```{r}
+hoods@data <- hoods@data %>% left_join(hmt.by.hood, by = c("label" = "neighborhood"))
+```
+
+```{r}
+hmt.levels <- c("healthy", "upper middle", "lower middle", "distressed", "other")
+
+incen <- incen %>% 
+  mutate_at(
+    vars(prog.type, hmt.group, predominant.code, label, gender, race, ethnicity),
+    funs(as.factor)
+  ) %>%
+  mutate(hmt.group = fct_relevel(hmt.group, hmt.levels))
+
+```
+
+```{r}
+sales <- sales %>% rename(sales.block = Block, sales.lot = Lot)
+real.prop <- real.prop %>% rename(real.block = block, real.lot = lot)
+```
+
+```{r}
+real.prop <- real.prop %>%
+  mutate(real.block.clean = gsub("^0+", "", real.block),
+         real.lot.clean = gsub("^0+", "", real.lot))
+
+sales <- sales %>%
+  mutate(sales.block.clean = gsub("^0+", "", sales.block),
+         sales.lot.clean = gsub("^0+", "", sales.lot))
+```
+
+```{r}
+sales <- sales %>%
+  left_join(real.prop, 
+            by = c("sales.block.clean" = "real.block.clean",
+                   "sales.lot.clean" = "real.lot.clean")
+            )
+```
+
+# All Homeownership Incentive Distributions, 2016-2018
+
+```{r out.width = "100%", fig.width = 8, fig.height = 6}
+plot.colors <- c(iteam.colors[1], iteam.colors[4], iteam.colors[5])
+
+
+pal <- colorFactor(plot.colors,
+                   domain = incen$prog.type)
+
+hoods.labels <- paste0(
+  hoods$label,
+  "<br>2017 Housing Market Typology: ", hoods$predominant.code
+)
+
+labels <- paste0(
+  incen$prog.type,
+  "<br>", incen$house.num, " ", incen$street, " ", incen$street.type,
+  "<br>Amount: $", incen$amount
+  
+)
+
+leaflet() %>%
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>% 
+  addPolygons(data = hoods,
+              fillOpacity = 0,
+              color = "gray10",
+              weight = 3,
+              label = ~lapply(hoods.labels, HTML)) %>%
+  addCircleMarkers(data = incen %>% filter(prog.type == "LNYW"),
+                   radius = 1,
+                   color = iteam.colors[1],
+                   label = ~lapply(labels, HTML),
+                   group = "LNYW"
+  ) %>%
+  addCircleMarkers(data = incen %>% filter(prog.type == "CDBG"),
+                   radius = 1,
+                   color = iteam.colors[4],
+                   label = ~lapply(labels, HTML),
+                   group = "CDBG"
+  ) %>%
+  addCircleMarkers(data = incen %>% filter(prog.type == "V2V"),
+                   radius = 1,
+                   color = iteam.colors[3],
+                   label = ~lapply(labels, HTML),
+                   group = "V2V"
+  ) %>%
+  addLayersControl(overlayGroups = c("LNYW", "CDBG", "V2V"))
+  # addLegend(position = "bottomright",
+  #           colors = plot.colors,
+  #           labels = c("LNYW", 
+  #                      "CDBG", 
+  #                      "V2V"),
+  #           opacity = 1)
+
+```
+
+## Neighborhood Analysis
+
+
+# Homeownership Incentive Funding Distribution by Housing Market Typology Group, 2016-2018
+
+```{r include = T, echo = T}
+pct.incen.hmt.group <- incen %>% 
+  group_by(prog.type, hmt.group) %>%
+  summarise(total = sum(as.numeric(amount))) %>%
+  mutate(total = ifelse(is.na(total), 0, total)) %>%
+  filter(!is.na(prog.type)) %>%
+  ungroup() %>%
+  group_by(prog.type) %>%
+  mutate(pct = percent(total / sum(total))) %>%
+  select(-total) %>%
+  spread(key = prog.type, value = pct)
+
+kable(pct.incen.hmt.group)
+```
+
+```{r}
+hoods@data <- hoods@data %>%
+  left_join(
+    incen %>% 
+      count(label, prog.type) %>% 
+      spread(key = prog.type, value = n),
+    by = c("label" = "label")
+  ) %>%
+  left_join(
+    sales %>% 
+      filter(deed.date >= "2016-01-01") %>% 
+      count(neighborhood) %>%
+      rename(sales.16_18 = n),
+    by = c("label" = "neighborhood")
+  )
+```
+
+```{r}
+hoods@data <- hoods@data %>%
+  mutate_at(
+    vars(CDBG, LNYW, V2V, sales.16_18),
+    funs(replace(., is.na(.), 0))
+  ) %>%
+  mutate(
+    lnyw.per.100sales = 100 * LNYW / sales.16_18,
+    cdbg.per.100sales = 100 * CDBG / sales.16_18,
+    v2v.per.100sales = 100 * V2V / sales.16_18
+  )
+```
+
+
+
+
+```{r out.width = "100%", fig.width = 8, echo = F}
+inputPanel(
+  selectInput("program", label = "Select incentive program:",
+              choices = c("Community Development Block Grant",
+                          "Live Near Your Work",
+                          "Vacants to Value"),
+              selected = "Community Development Block Grant"),
+  selectInput("program_var", label = "Select variable to map:",
+              choices = c("Number of incentives per 100 sales",
+                          "% of all sales value paid by incentives"),
+              selected = "Number of incentives per 100 sales")
+)
+
+```
+
+```{r out.width = "100%", fig.width = 8, fig.height = 6, echo = F}
+
+
+get_varname <- reactive({
+  
+  prog <- case_when(
+    input$program == "Community Development Block Grant"  ~ "cdbg",
+    input$program == "Live Near Your Work" ~ "lnyw",
+    input$program == "Vacants to Value" ~ "v2v",
+    TRUE ~ NA_character_
+  )
+  
+  progvar <- case_when(
+    input$program_var == "Number of incentives per 100 sales"  ~ ".per.100sales",
+    #input$program_var == "% of all sales value paid by incentives" ~ ".sales.16_18",
+    TRUE ~ NA_character_
+  )
+  
+  varname <- paste0(prog, progvar)
+  
+  
+})
+
+get_labels <- reactive({
+  
+  varname <- get_varname()
+  
+  hoods.rates.labels <- paste0(
+    hoods$label,
+    "<br>2017 Housing Market Typology: ", hoods$predominant.code,
+    "<br>Per 100 sales: ", lapply(hoods@data[, varname], as.character))
+})
+
+
+get_pal <- reactive({
+  
+  varname <- get_varname()
+  
+  bins <- c(0, 0.1, 0.5,  1, 5, 10, 50, 100)
+
+  pal <- colorBin("Blues",
+                  domain = hoods@data[, varname],
+                  bins = bins)
+  
+  # pal <- colorNumeric("Blues",
+  #                     domain = hoods@data[, varname],
+  #                     na.color = NA)
+})
+
+renderLeaflet({
+  
+  varname <- get_varname()
+  labels <- get_labels()
+  pal <- get_pal()
+
+    # mutate(
+    #   lnyw.per.100sales = replace(lnyw.per.100sales, lnyw.per.100sales == 0, NA),
+    #   cdbg.per.100sales = replace(cdbg.per.100sales, cdbg.per.100sales == 0, NA),
+    #   v2v.per.100sales = replace(v2v.per.100sales, v2v.per.100sales == 0 , NA)) 
+  
+  leaflet() %>%
+    setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+    addProviderTiles(providers$Stamen.TonerLite) %>%
+        addPolygons(data = hoods,
+                fillOpacity = .7,
+                fillColor = ~pal(as.numeric(hoods@data[, varname])), ###
+                color = "gray10",
+                label = ~lapply(labels, HTML),
+                weight = 2)
+})
+
+```

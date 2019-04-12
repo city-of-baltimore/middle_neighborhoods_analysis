@@ -1,4 +1,19 @@
 
+
+mutate_hmt_group <- function(df, type.field){
+
+  type.field <- enquo(type.field)
+  
+  df <- df %>% mutate(., 
+    hmt.group = case_when(
+      !! type.field %in% c("A", "B", "C") ~ "healthy",
+      !! type.field %in% c("D", "E") ~ "upper middle",
+      !! type.field %in% c("F", "G", "H") ~ "lower middle",
+      !! type.field %in% c("I", "J") ~ "distressed",
+      TRUE ~ "other")
+  )
+}
+
 get_egis_table <- function(db, table){
   
   table.full <- paste0(db, ".", table)

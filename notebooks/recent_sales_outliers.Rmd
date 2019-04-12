@@ -10,6 +10,7 @@ output:
     fig_width: 10
     toc: yes
     toc_depth: 2
+runtime: shiny
 ---
 
 ```{r setup, include = FALSE, echo = FALSE, message = FALSE, cache = TRUE}
@@ -590,6 +591,12 @@ color = iteam.colors[3],
 
 ```
 
+```{r}
+mris.recent %>%
+  left_join(hmt.hood, by = c("Neighborhood" = "Neighborhood")) %>%
+  group_by(`Predominant Code Ignoring Non-Residential`) %>%
+  summarise(max.sale.price = max(Close_Price))
+```
 
 
 

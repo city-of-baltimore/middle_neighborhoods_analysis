@@ -19,87 +19,210 @@ knitr::opts_chunk$set(echo = FALSE, warning = F, message = F, include = T,
 
 
 ```{r}
+library(readxl)
 library(ggmap)
 library(leaflet)
+library(htmltools)
+library(RSocrata)
+library(shiny)
 source("../src/00_initialize.R")
 ```
 
-```{r}
-register_google(VARS$GOOGLE_GEO_KEY)
-```
+```{r load.data, cache = T, warning = F, echo = F}
+incen <- read_csv("../data/processed/homebuying_incentives/homebuying_incentive_programs.csv", na = c("NA"))
 
-
-```{r}
 hoods <- get_neighborhood_boundaries()
-```
+hmt.by.hood <- read_excel("../data/raw/hmt/HMT by Neighborhood 2017.xlsx") %>%
+  transmute(neighborhood = Neighborhood,
+            predominant.code = `Predominant Code Ignoring Non-Residential`)
+sales <- load_sales_data(load.cache = T)
 
-
-```{r}
-cdbg16 <- read_excel("../data/raw/homebuying_incentives/CDBG 16.xlsx",
-                   skip = 2)
-cdbg17 <- read_excel("../data/raw/homebuying_incentives/CDBG 17.xlsx",
-                   skip = 2)
-cdbg18 <- read_excel("../data/raw/homebuying_incentives/CDBG 18.xls",
-                   skip = 2)
+real.prop.url <- "https://data.baltimorecity.gov/resource/6act-qzuy.json"
+real.prop <- read.socrata(real.prop.url, app_token = VARS$SOCRATA_TOKEN)
 ```
 
 ```{r}
-data.frame(cdbg16 = colnames(cdbg16),
-           cdbg17 = colnames(cdbg17),
-           cdbg18 = colnames(cdbg18))
+hoods@data <- hoods@data %>% left_join(hmt.by.hood, by = c("label" = "neighborhood"))
 ```
 
 ```{r}
-cdbg <- cdbg16 %>% 
-  bind_rows(cdbg17) %>%
-  bind_rows(cdbg18)
-```
+hmt.levels <- c("healthy", "upper middle", "lower middle", "distressed", "other")
 
-Lots of cleaning to do on Neighborhood, maybe just geocode and reassign?
+incen <- incen %>% 
+  mutate_at(
+    vars(prog.type, hmt.group, predominant.code, label, gender, race, ethnicity),
+    funs(as.factor)
+  ) %>%
+  mutate(hmt.group = fct_relevel(hmt.group, hmt.levels))
 
-```{r}
-cdbg %>% count(Neighborhood) %>% arrange(Neighborhood)
-```
-
-```{r}
-cdbg <- cdbg %>%
-  mutate(full.address = paste0(`House Num`, " ", 
-                               Street, " ", `Street Type`, 
-                               ", Baltimore, MD ", Zip)) %>%
-  mutate_geocode(full.address)
 ```
 
 ```{r}
-geocode("3729 roland ave baltimore md 21211")
+sales <- sales %>% rename(sales.block = Block, sales.lot = Lot)
+real.prop <- real.prop %>% rename(real.block = block, real.lot = lot)
 ```
 
 ```{r}
+real.prop <- real.prop %>%
+  mutate(real.block.clean = gsub("^0+", "", real.block),
+         real.lot.clean = gsub("^0+", "", real.lot))
+
+sales <- sales %>%
+  mutate(sales.block.clean = gsub("^0+", "", sales.block),
+         sales.lot.clean = gsub("^0+", "", sales.lot))
+```
+
+```{r}
+sales <- sales %>%
+  left_join(real.prop, 
+            by = c("sales.block.clean" = "real.block.clean",
+                   "sales.lot.clean" = "real.lot.clean")
+            )
+```
+
+# All Homeownership Incentive Distributions, 2016-2018
+
+```{r out.width = "100%", fig.width = 8}
+plot.colors <- c(iteam.colors[1], iteam.colors[4], iteam.colors[5])
+
+
+pal <- colorFactor(plot.colors,
+                   domain = incen$prog.type)
+
+hoods.labels <- paste0(
+  hoods$label,
+  "<br>2017 Housing Market Typology: ", hoods$predominant.code
+)
+
+labels <- paste0(
+  incen$prog.type,
+  "<br>", incen$house.num, " ", incen$street, " ", incen$street.type,
+  "<br>Amount: $", incen$amount
+  
+)
+
 leaflet() %>%
   setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
   addProviderTiles(providers$Stamen.TonerLite) %>% 
   addPolygons(data = hoods,
               fillOpacity = 0,
-              color = iteam.colors[2],
-              weight = 2) %>%
-  addCircleMarkers(data = cdbg,
+              color = "gray10",
+              weight = 3,
+              label = ~lapply(hoods.labels, HTML)) %>%
+  addCircleMarkers(data = incen,
                    radius = 1,
-                   color = "red")
-  
+                   color = ~pal(incen$prog.type),
+                   label = ~lapply(labels, HTML)
+  ) %>%
+  addLegend(position = "bottomright",
+            colors = plot.colors,
+            labels = c("CDBG", 
+                       "LNYW", 
+                       "V2V"),
+            opacity = 1)
+
+```
+
+## Neighborhood Analysis
+
+
+# Homeownership Incentive Funding Distribution by Housing Market Typology Group, 2016-2018
+
+```{r echo = T}
+incen %>% 
+  group_by(prog.type, hmt.group) %>%
+  summarise(total = sum(as.numeric(amount))) %>%
+  mutate(total = ifelse(is.na(total), 0, total)) %>%
+  filter(!is.na(prog.type)) %>%
+  ungroup() %>%
+  group_by(prog.type) %>%
+  mutate(pct = percent(total / sum(total))) %>%
+  select(-total) %>%
+  spread(key = prog.type, value = pct)
+```
+
+
+
+
+```{r}
+hoods@data <- hoods@data %>%
+  left_join(
+    incen %>% 
+      count(label, prog.type) %>% 
+      spread(key = prog.type, value = n),
+    by = c("label" = "label")
+  ) %>%
+  left_join(
+    sales %>% 
+      filter(deed.date >= "2016-01-01") %>% 
+      count(neighborhood) %>%
+      rename(sales.16_18 = n),
+    by = c("label" = "neighborhood")
+  )
 ```
 
 ```{r}
-cdbg.geo <- cdbg
-coordinates(cdbg.geo) <- c("lon", "lat")
+hoods@data <- hoods@data %>%
+  mutate_at(
+    vars(CDBG, LNYW, V2V, sales.16_18),
+    funs(replace(., is.na(.), 0))
+  ) %>%
+  mutate(
+    lnyw.per.100sales = 100 * LNYW / sales.16_18,
+    cdbg.per.100sales = 100 * CDBG / sales.16_18,
+    v2v.per.100sales = 100 * V2V / sales.16_18
+  )
+```
+
+
+```{r out.width = "100%", fig.width = 8}
+#varname <- "lnyw.per.100sales"
+
+pal <- colorBin("YlOrRd",
+                domain = c(0, 10),
+                bins = 7)
+
+hoods.var.labels <- paste0(
+  hoods$label,
+  "<br>2017 Housing Market Typology: ", hoods$predominant.code,
+  "<br>per 100 sales: ", hoods$cdbg.per.100sales
+)
+
+leaflet() %>%
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>%
+  addPolygons(data = hoods,
+              fillOpacity = .5,
+              fillColor = ~pal(hoods$cdbg.per.100sales),
+              color = "gray10",
+              weight = 2,
+              label = ~lapply(hoods.var.labels, HTML))
 
 
 ```
 
+
+
+
+
+# Household Income Distribution by Program
+
 ```{r}
-over(cdbg.geo, hoods)
+incen %>%
+  ggplot() +
+  geom_density(aes(household.income, color = prog.type)) +
+  theme_iteam_presentations() +
+  xlim(c(0, 300000))
 ```
 
 ```{r}
 
+
+```
+
+
+```{r}
+sales %>% filter(deed.date >= "2016-01-01") %>% count(neighborhood)
 ```
 
 
