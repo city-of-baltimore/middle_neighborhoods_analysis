@@ -1,5 +1,6 @@
 ---
-title: ""
+title: "Homebuying Incentive Programs"
+subtitle: "Department of Housing and Community Development, City of Baltimore"
 author: "Justin Elszasz, Mayor's Office of Innovation"
 email: "justin.elszasz@baltimorecity.gov"
 date: "Monday, March 25, 2019"
@@ -10,6 +11,8 @@ output:
     fig_width: 10
     toc: yes
     toc_depth: 2
+editor_options: 
+  chunk_output_type: inline
 ---
 
 ```{r setup, include = FALSE, echo = FALSE, message = FALSE, cache = TRUE}
@@ -37,8 +40,10 @@ hmt.by.hood <- read_excel("../data/raw/hmt/HMT by Neighborhood 2017.xlsx") %>%
             predominant.code = `Predominant Code Ignoring Non-Residential`)
 sales <- load_sales_data(load.cache = T)
 
-real.prop.url <- "https://data.baltimorecity.gov/resource/6act-qzuy.json"
-real.prop <- read.socrata(real.prop.url, app_token = VARS$SOCRATA_TOKEN)
+#real.prop.url <- "https://data.baltimorecity.gov/resource/6act-qzuy.json"
+#real.prop <- read.socrata(real.prop.url, app_token = VARS$SOCRATA_TOKEN)
+real.prop <- read_rds("../data/processed/real_prop.Rds")
+
 ```
 
 ```{r}
@@ -109,17 +114,26 @@ leaflet() %>%
               color = "gray10",
               weight = 3,
               label = ~lapply(hoods.labels, HTML)) %>%
-  addCircleMarkers(data = incen,
+  addCircleMarkers(data = incen %>% filter(prog.type == "LNYW"),
                    radius = 1,
-                   color = ~pal(incen$prog.type),
-                   label = ~lapply(labels, HTML)
+                   color = iteam.colors[1],
+                   label = ~lapply(labels, HTML),
+                   group = "LNYW"
   ) %>%
-  addLegend(position = "bottomright",
-            colors = plot.colors,
-            labels = c("CDBG", 
-                       "LNYW", 
-                       "V2V"),
-            opacity = 1)
+  addCircleMarkers(data = incen %>% filter(prog.type == "CDBG"),
+                   radius = 1,
+                   color = iteam.colors[4],
+                   label = ~lapply(labels, HTML),
+                   group = "CDBG"
+  ) %>%
+  addCircleMarkers(data = incen %>% filter(prog.type == "V2V"),
+                   radius = 1,
+                   color = iteam.colors[3],
+                   label = ~lapply(labels, HTML),
+                   group = "V2V"
+  ) %>%
+  addLayersControl(overlayGroups = c("LNYW", "CDBG", "V2V"),
+                   options = layersControlOptions(collapsed = FALSE))
 
 ```
 
@@ -178,27 +192,59 @@ hoods@data <- hoods@data %>%
 ```{r out.width = "100%", fig.width = 8}
 #varname <- "lnyw.per.100sales"
 
-pal <- colorBin("YlOrRd",
-                domain = c(0, 10),
-                bins = 7)
+  bins <- c(0, 0.1, 0.5,  1, 5, 10, 50, 100)
 
-hoods.var.labels <- paste0(
+  pal <- colorBin("Blues",
+                  domain = c(0, 100),
+                  bins = bins)
+
+lnyw.labels <- paste0(
   hoods$label,
   "<br>2017 Housing Market Typology: ", hoods$predominant.code,
-  "<br>per 100 sales: ", hoods$cdbg.per.100sales
+  "<br>LNYW per 100 sales: ", as.character(round(hoods$lnyw.per.100sales, 1))
 )
 
-leaflet() %>%
+cdbg.labels <- paste0(
+  hoods$label,
+  "<br>2017 Housing Market Typology: ", hoods$predominant.code,
+  "<br>CDBG per 100 sales: ", as.character(round(hoods$cdbg.per.100sales, 1))
+)
+
+v2v.labels <- paste0(
+  hoods$label,
+  "<br>2017 Housing Market Typology: ", hoods$predominant.code,
+  "<br>V2V per 100 sales: ", as.character(round(hoods$v2v.per.100sales, 1))
+)
+
+map <- leaflet() %>%
   setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
   addProviderTiles(providers$Stamen.TonerLite) %>%
+  addPolygons(data = hoods,
+              fillOpacity = .5,
+              fillColor = ~pal(hoods$lnyw.per.100sales),
+              color = "gray10",
+              weight = 2,
+              label = ~lapply(lnyw.labels, HTML),
+              group = "LNYW") %>%
   addPolygons(data = hoods,
               fillOpacity = .5,
               fillColor = ~pal(hoods$cdbg.per.100sales),
               color = "gray10",
               weight = 2,
-              label = ~lapply(hoods.var.labels, HTML))
+              label = ~lapply(cdbg.labels, HTML),
+              group = "CDBG") %>%
+  addPolygons(data = hoods,
+              fillOpacity = .5,
+              fillColor = ~pal(hoods$v2v.per.100sales),
+              color = "gray10",
+              weight = 2,
+              label = ~lapply(v2v.labels, HTML),
+              group = "V2V") %>%
+  addLegend(pal = pal, values = bins, title = "Incentives per 100 Sales") %>%
+  addLayersControl(baseGroups = c("LNYW", "CDBG", "V2V"),
+                   options = layersControlOptions(collapsed = FALSE))
 
-
+map
 ```
 
 
@@ -215,15 +261,6 @@ incen %>%
   xlim(c(0, 300000))
 ```
 
-```{r}
-
-
-```
-
-
-```{r}
-sales %>% filter(deed.date >= "2016-01-01") %>% count(neighborhood)
-```
 
 
 
