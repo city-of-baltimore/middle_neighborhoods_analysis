@@ -34,7 +34,8 @@ source("../src/00_initialize.R")
 ```{r load.data, cache = T, warning = F, echo = F}
 incen <- read_csv("../data/processed/homebuying_incentives/homebuying_incentive_programs.csv", na = c("NA"))
 
-hoods <- get_neighborhood_boundaries()
+#hoods <- get_neighborhood_boundaries()
+hoods <- readRDS("../data/processed/hoods.Rds")
 hmt.by.hood <- read_excel("../data/raw/hmt/HMT by Neighborhood 2017.xlsx") %>%
   transmute(neighborhood = Neighborhood,
             predominant.code = `Predominant Code Ignoring Non-Residential`)
@@ -219,6 +220,10 @@ v2v.labels <- paste0(
 map <- leaflet() %>%
   setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
   addProviderTiles(providers$Stamen.TonerLite) %>%
+    addPolygons(data = hoods,
+              fillOpacity = .0,
+              color = "gray10",
+              weight = 2) %>%
   addPolygons(data = hoods,
               fillOpacity = .5,
               fillColor = ~pal(hoods$lnyw.per.100sales),
