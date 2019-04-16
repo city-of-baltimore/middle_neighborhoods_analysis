@@ -15,6 +15,19 @@ editor_options:
   chunk_output_type: inline
 ---
 
+The analysis below is for Baltimore homeownership incentive programs including:
+ 
+- Community Development Block Grants
+- Live Near Your Work
+- Vacants to Value
+
+Weatherization and repairs will be added once geocoding is completed.
+
+The primary research questions are:
+
+- Where are each of the programs utilized and are there concentrations?
+- What programs are serving strong, middle, and distressed neighborhoods, respectively?
+
 ```{r setup, include = FALSE, echo = FALSE, message = FALSE, cache = TRUE}
 knitr::opts_chunk$set(echo = FALSE, warning = F, message = F, include = T,
                                  fig.width = 10, fig.height = 5)
@@ -31,7 +44,7 @@ library(shiny)
 source("../src/00_initialize.R")
 ```
 
-```{r load.data, cache = T, warning = F, echo = F}
+```{r load.data, cache = T, warning = F, echo = F, message = F}
 incen <- read_csv("../data/processed/homebuying_incentives/homebuying_incentive_programs.csv", na = c("NA"))
 
 #hoods <- get_neighborhood_boundaries()
@@ -75,20 +88,28 @@ real.prop <- real.prop %>%
 
 sales <- sales %>%
   mutate(sales.block.clean = gsub("^0+", "", sales.block),
-         sales.lot.clean = gsub("^0+", "", sales.lot))
+         sales.lot.clean = gsub("^0+", "", sales.lot)) 
 ```
 
 ```{r}
+# filter for principal residence and "normal" purchases
 sales <- sales %>%
   left_join(real.prop, 
             by = c("sales.block.clean" = "real.block.clean",
                    "sales.lot.clean" = "real.lot.clean")
-            )
+            ) %>%
+  filter(`How Conveyed` == 1,
+         !grepl("NOT", rescode))
 ```
 
-# All Homeownership Incentive Distributions, 2016-2018
 
-```{r out.width = "100%", fig.width = 8}
+# Homeownership
+
+### All Homeownership Incentive Distributions, 2016-2018
+
+Each incentive distribution was geocoded to repair/replace neighborhood assignment and to provide point locations for any later clustering or hot spot analysis.
+
+```{r out.width = "100%", fig.width = 8, fig.height = 6}
 plot.colors <- c(iteam.colors[1], iteam.colors[4], iteam.colors[5])
 
 
@@ -111,10 +132,13 @@ leaflet() %>%
   setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
   addProviderTiles(providers$Stamen.TonerLite) %>% 
   addPolygons(data = hoods,
+              stroke = T,
+              fill = T,
               fillOpacity = 0,
-              color = "gray10",
+              color = "black",
               weight = 3,
-              label = ~lapply(hoods.labels, HTML)) %>%
+              label = ~lapply(hoods.labels, HTML),
+              opacity = .4) %>%
   addCircleMarkers(data = incen %>% filter(prog.type == "LNYW"),
                    radius = 1,
                    color = iteam.colors[1],
@@ -138,10 +162,10 @@ leaflet() %>%
 
 ```
 
-## Neighborhood Analysis
+### Funding distribution by HMT group
 
+The summary table below gives the percent of program funding that was distributed to each housing market type. Live Near Your Work is utilized primarily in strong/healhty markets, while 85% of CDBG funding goes to middle neighborhoods.
 
-# Homeownership Incentive Funding Distribution by Housing Market Typology Group, 2016-2018
 
 ```{r echo = T}
 incen %>% 
@@ -160,6 +184,8 @@ incen %>%
 
 
 ```{r}
+# Justin to add roll up of dollar amounts
+
 hoods@data <- hoods@data %>%
   left_join(
     incen %>% 
@@ -189,8 +215,29 @@ hoods@data <- hoods@data %>%
   )
 ```
 
+The map and table below present a program "utilization" metric - the number of incentives used per 100 home sales.
 
-```{r out.width = "100%", fig.width = 8}
+The summary table below gives program "utilization" by housing market typology tier.
+
+```{r}
+hoods@data %>%
+  mutate_hmt_group(predominant.code) %>%
+  mutate(hmt.group = fct_relevel(hmt.group, hmt.levels)) %>%
+  group_by(hmt.group) %>%
+  summarise(
+    sales.16_18 = sum(sales.16_18),
+    lnyw.count = sum(LNYW),
+    lnyw.per.100sales = 100 * lnyw.count / sum(sales.16_18),
+    cdbg.count = sum(CDBG),
+    cdbg.per.100sales = 100 * cdbg.count / sum(sales.16_18),
+    v2v.count = sum(V2V),
+    v2v.per.100sales = 100 * v2v.count / sum(sales.16_18)) %>%
+  mutate_at(
+    vars(lnyw.per.100sales, cdbg.per.100sales, v2v.per.100sales),
+    funs(round(.,1)))
+```
+
+```{r out.width = "100%", fig.width = 8, fig.height = 6}
 #varname <- "lnyw.per.100sales"
 
   bins <- c(0, 0.1, 0.5,  1, 5, 10, 50, 100)
@@ -217,13 +264,14 @@ v2v.labels <- paste0(
   "<br>V2V per 100 sales: ", as.character(round(hoods$v2v.per.100sales, 1))
 )
 
-map <- leaflet() %>%
+leaflet() %>%
   setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
   addProviderTiles(providers$Stamen.TonerLite) %>%
     addPolygons(data = hoods,
-              fillOpacity = .0,
-              color = "gray10",
-              weight = 2) %>%
+              color = "black",
+              weight = 2,
+              fill = T,
+              fillOpacity = 0) %>%
   addPolygons(data = hoods,
               fillOpacity = .5,
               fillColor = ~pal(hoods$lnyw.per.100sales),
@@ -242,6 +290,8 @@ map <- leaflet() %>%
               fillOpacity = .5,
               fillColor = ~pal(hoods$v2v.per.100sales),
               color = "gray10",
+              stroke = T,
+              opacity = 1,
               weight = 2,
               label = ~lapply(v2v.labels, HTML),
               group = "V2V") %>%
@@ -249,16 +299,13 @@ map <- leaflet() %>%
   addLayersControl(baseGroups = c("LNYW", "CDBG", "V2V"),
                    options = layersControlOptions(collapsed = FALSE))
 
-map
 ```
 
 
 
+### Program demographics
 
-
-# Household Income Distribution by Program
-
-```{r}
+```{r fig.width = 6, fig.height = 3}
 incen %>%
   ggplot() +
   geom_density(aes(household.income, color = prog.type)) +
@@ -266,8 +313,30 @@ incen %>%
   xlim(c(0, 300000))
 ```
 
+```{r}
+incen %>%
+  filter(household.income <= 200000) %>%
+  ggplot() +
+  geom_boxplot(aes(prog.type, household.income)) +
+  theme_iteam_google_docs()
+```
+```{r}
+incen %>%
+  group_by(prog.type) %>%
+  summarise(median.income = median(household.income, na.rm = T),
+            mean.income = mean(household.income, na.rm = T))
+```
 
+```{r}
+incen %>%
+  count(prog.type, race) %>%
+  group_by(prog.type) %>%
+  mutate(pct = percent(n / sum(n))) %>%
+  select(-n) %>%
+  spread(key = prog.type, value = pct)
+```
 
+# Weatherization + Repair
 
-
+[needs geocoded]
 
