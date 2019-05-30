@@ -22,7 +22,7 @@ knitr::opts_chunk$set(echo = FALSE, warning = F, message = F, include = T,
 
 ```{r}
 source("../src/00_initialize.R")
-sales <- load_sales_data(load.cache = T)
+
 
 library(readxl)
 library(RSocrata)
@@ -31,25 +31,29 @@ library(leaflet)
 library(RODBC)
 library(htmltools)
 
-real.prop.url <- "https://data.baltimorecity.gov/resource/6act-qzuy.json"
-real.prop <- read.socrata(real.prop.url, app_token = VARS$SOCRATA_TOKEN)
 
-hoods <- get_neighborhood_boundaries()
+sales <- load_sales_data(load.cache = T)
+#real.prop.url <- "https://data.baltimorecity.gov/resource/6act-qzuy.json"
+#real.prop <- read.socrata(real.prop.url, app_token = VARS$SOCRATA_TOKEN)
+real.prop <- readRDS("../data/processed/real_prop.Rds")
+#hoods <- get_neighborhood_boundaries()
+hoods <- readRDS("../data/processed/hoods.Rds")
 hmt <- load_block_group_data(load.cache = T)
 hmt.hood <- read_excel("../data/raw/hmt/HMT by Neighborhood 2017.xlsx")
 
 conn.gis <- odbcDriverConnect(
   paste0(
     'driver={ODBC Driver 13 for SQL Server};',
-    'server=', VARS$EGIS_SERVER, 
+    'server=', VARS$EGIS_SERVER,
     ';uid=', VARS$EGIS_SERVER_USER,
-    ';pwd=',VARS$EGIS_SERVER_PWD, 
+    ';pwd=',VARS$EGIS_SERVER_PWD,
     ';database=housing;trusted_connection=No')
 )
 
 permits <- sqlFetch(conn.gis, "housing.tbl_Permit")
 
 mris.recent <- read_excel("../data/raw/sales/Nov 2018 - Feb 2019 sales for Justin.xlsx")
+
 ```
 
 ```{r}
@@ -82,7 +86,21 @@ sales <- sales %>%
             by = c("sales.block.clean" = "real.block.clean",
                    "sales.lot.clean" = "real.lot.clean")
             )
+
+
+sales <- sales %>% 
+  separate(location.coordinates, 
+           into = c("long", "lat"), 
+           sep = c(","), convert = T) %>%
+  mutate(long = as.numeric(gsub("c\\(", "", long)),
+         lat = as.numeric(gsub("\\)", "", lat)))
+
 ```
+
+```{r}
+sales <- sales %>% mutate(full.street = paste0(`House #`, " ", `Street Name`, " ", Suffix  ))
+```
+
 
 ```{r}
 sales %>% count(is.na(real.block), is.na(real.lot))
@@ -598,10 +616,128 @@ mris.recent %>%
   summarise(max.sale.price = max(Close_Price))
 ```
 
+# 3 Most Expensive in Each Neighborhood
+
+```{r}
+View(sales)
+View(mris.recent)
+```
 
 
 
 
+```{r}
+sales.mid.hoods.top3 <- sales %>%
+  filter(year(deed.date) == 2018,
+         `How Conveyed` == 1,
+         !grepl("NOT", rescode),
+         neighborhood %in% mid.hoods$Neighborhood) %>%
+  group_by(neighborhood) %>%
+  arrange(desc(`Sales Price`)) %>%
+  mutate(price.order = row_number()) %>%
+  ungroup() %>%
+  filter(price.order <= 3) %>%
+  arrange(neighborhood, price.order)
+
+
+sales.mid.hoods.top3.geo <- sales.mid.hoods.top3 %>%
+  filter(!is.na(long))
+  
+sales.mid.hoods.top3.geo <- SpatialPointsDataFrame(
+  sales.mid.hoods.top3.geo %>% select(long, lat), 
+  sales.mid.hoods.top3.geo,
+  proj4string = CRS("+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0"))
+
+sales.mid.hoods.top3.geo <- 
+  spTransform(
+    sales.mid.hoods.top3.geo, 
+    CRSobj = CRS("+init=epsg:4326 +proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+    )
+```
+
+```{r}
+
+sale.labels <- paste0(
+  "Analysis: SDAT (through October 18)<br>",
+  sales.mid.hoods.top3.geo$`House #`, " ",
+  sales.mid.hoods.top3.geo$`Street Name`, " ",
+  sales.mid.hoods.top3.geo$Suffix, 
+  "<br>Sale Price in 2018: ", 
+  as.character(sales.mid.hoods.top3.geo$`Sales Price`),
+  "<br>New Owner: ", sales.mid.hoods.top3.geo$new.owner
+  #"<br>Permits Issued from 2017-2018: ", sales.mid.hoods.top3.geo$permit.count,
+  #"<br>Total Permit Value from 2017-2018: ", sales.mid.hoods.top3.geo$permit.total.value
+)
+
+
+leaflet() %>%
+  setView(lng = -76.6, lat = 39.3, zoom = 11) %>%
+  addProviderTiles(providers$Stamen.TonerLite) %>% 
+  addPolygons(data = hoods, 
+              weight = 2, 
+              
+              color = "black",
+              opacity = 0.5,
+              fillOpacity = 0, 
+              label = ~lapply(hoods.labels, HTML)) %>%
+  addPolygons(data = mid.hoods.geo, 
+              weight = 2, 
+              #color = "black",
+              opacity = 0.0,
+              fillOpacity = .2,
+              fillColor = iteam.colors[3],
+              label = ~lapply(mid.hoods.labels, HTML)) %>%
+  addCircleMarkers(data = sales.mid.hoods.top3.geo, 
+                   color = iteam.colors[1],
+                   opacity = 1,
+                   radius = 2,
+                   label = ~lapply(sale.labels, HTML))
+```
+
+
+
+
+
+
+```{r}
+# IF NEED TO USE MRIS
+
+mris.recent %>% 
+  filter(Transaction_Type == "Standard") %>%
+  group_by(Neighborhood) %>%
+  arrange(desc(Close_Price)) %>%
+  mutate(price.order = row_number()) %>%
+  filter(price.order <= 3) %>%
+  arrange(Neighborhood, price.order) 
+```
+
+
+```{r}
+library(plotly)
+plot_hood_sales_timeline <- function(hood){
+  
+  df <- sales %>% 
+    filter(neighborhood == hood, 
+           deed.date >= "2015-01-01",
+           `How Conveyed` == 1,
+           !grepl("NOT", rescode))
+  
+  g <- df %>%
+    ggplot(aes(deed.date, `Sales Price`)) +
+    geom_point(color = ifelse((df$full.street %in% sales.mid.hoods.top3$full.street), 
+                              "red", "black"),
+               aes(text = paste(`House #`, `Street Name`))) +
+    theme_iteam_google_docs() +
+    ylim(c(0, 500000))
+  
+  ggplotly(g)
+}
+
+```
+
+```{r}
+plot_hood_sales_timeline("Dorchester")
+```
 
 
 

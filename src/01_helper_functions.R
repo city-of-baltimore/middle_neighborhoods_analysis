@@ -16,6 +16,8 @@ mutate_hmt_group <- function(df, type.field){
 
 get_egis_table <- function(db, table){
   
+  library(RODBC)
+
   table.full <- paste0(db, ".", table)
   
   message(paste0(Sys.time(), ": ", "Retrieving table ", table.full)) 

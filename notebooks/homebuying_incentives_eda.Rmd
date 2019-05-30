@@ -31,6 +31,8 @@ The primary research questions are:
 ```{r setup, include = FALSE, echo = FALSE, message = FALSE, cache = TRUE}
 knitr::opts_chunk$set(echo = FALSE, warning = F, message = F, include = T,
                                  fig.width = 10, fig.height = 5)
+
+options(scipen = 999)
 ```
 
 
@@ -195,7 +197,8 @@ hoods@data <- hoods@data %>%
   ) %>%
   left_join(
     sales %>% 
-      filter(deed.date >= "2016-01-01") %>% 
+      filter(deed.date >= "2015-07-01",
+             deed.date <= "2018-06-30") %>% 
       count(neighborhood) %>%
       rename(sales.16_18 = n),
     by = c("label" = "neighborhood")
@@ -335,6 +338,42 @@ incen %>%
   select(-n) %>%
   spread(key = prog.type, value = pct)
 ```
+
+# Effect of Programs
+
+```{r}
+incen.analytics <- incen %>%
+  transmute(label = label,
+            hmt.group = hmt.group,
+            prog.type = prog.type,
+            price.income.ratio = sales.price / household.income,
+            incen.income.ratio = amount / household.income,
+            incen.price.ratio = amount / sales.price)
+  
+```
+
+
+```{r}
+incen.analytics %>%
+  ggplot(aes(incen.price.ratio)) +
+  geom_density(aes(color = prog.type)) +
+  xlim(c(0, .25))
+```
+
+```{r}
+incen.analytics %>% 
+  group_by(prog.type) %>%
+  summarise(median.incen.price.ratio = median(incen.price.ratio, na.rm = T),
+            mean.incen.price.ratio = mean(incen.price.ratio, na.rm = T))
+```
+
+```{r}
+incen.analytics %>%
+  group_by(hmt.group, prog.type) %>%
+  summarise(median.incen.price.ratio = percent(median(incen.price.ratio, na.rm = T))) %>%
+  spread(key = prog.type, value = median.incen.price.ratio)
+```
+
 
 # Weatherization + Repair
 
